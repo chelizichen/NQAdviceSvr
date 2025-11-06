@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES5",
+    "downlevelIteration": true,
+    "sourceMap": false,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "allowImportingTsExtensions": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["ES2015", "ES2016", "ES2017", "ES2018"]
+  },
+  "include": ["index.ts", "service/**/*.ts"],
+  "exclude": ["node_modules", "test", "dist"]
+}

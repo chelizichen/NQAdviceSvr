@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>投资日历</title>
+    <style>
+      :root {
+        --border:#e6e6e6; --muted:#6e6e6e; --ok:#2ecc71; --warn:#e74c3c;
+        --bg:#f7f7f8; --card:#ffffff; --primary:#ff7aa2; --primary-dark:#ff5c8a;
+        --text:#222;
+        --page-grad: linear-gradient(180deg, #fafafa 0%, #f5f6fa 100%);
+        /* Instagram-like header gradient */
+        --header-grad: linear-gradient(90deg, #f58529, #feda77, #dd2a7b, #8134af, #515bd4);
+      }
+      * { box-sizing: border-box; }
+      body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background: var(--page-grad); color: var(--text); }
+      header { padding: 14px 18px; display:flex; align-items:center; justify-content:space-between; background: var(--header-grad); color: #fff;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+      h1 { font-size: 18px; margin:0; letter-spacing:0.2px;display: flex;align-items: center;}
+      .container { display:grid; grid-template-columns: 240px 1fr 340px; height: calc(100vh - 56px); }
+      .sidebar { border-right: 1px solid var(--border); padding: 14px; overflow:auto; background: var(--bg); }
+      .content { padding: 16px; overflow:auto; }
+      .notes { border-left: 1px solid var(--border); padding: 16px; display:flex; flex-direction:column; background: var(--bg); }
+      .date-item { padding: 10px 12px; border-radius: 14px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; background: var(--card);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        transition: transform .15s ease, box-shadow .15s ease, border-color .2s ease; }
+      .date-item:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+      .date-item.selected { border-color: var(--primary); box-shadow: 0 8px 20px rgba(255,92,138,0.18); background: linear-gradient(180deg, #fff 0%, #fff9fb 100%); }
+      .badges { margin-top:6px; font-size:12px; color: var(--muted); display:flex; gap:8px; }
+      .badge { padding:3px 8px; border:1px solid var(--border); border-radius:999px; background:#fff; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+      .badge.ok { color:#1a9f53; border-color:#1a9f53; background: #effaf3; }
+      .badge.warn { color:#c0392b; border-color:#c0392b; background: #fff1f0; }
+      .controls { margin-bottom: 10px; display:flex; gap:10px; align-items:center; }
+      button { padding: 8px 14px; border-radius:999px; border: 1px solid var(--border); background: linear-gradient(180deg, #fff, #f8f8f8); cursor:pointer;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow .15s ease, transform .15s ease; }
+      button:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
+      #generateBtn { border-color: var(--primary-dark); color: #fff; background: linear-gradient(180deg, var(--primary), var(--primary-dark)); }
+      .status { margin-left: 8px; color: var(--text); font-size: 12px; }
+      textarea, pre { width: 100%; flex:1; font-family: ui-monospace, Menlo, monospace; }
+      pre { white-space: pre-wrap; border:1px solid var(--border); border-radius:16px; padding:16px; min-height: 320px; background: var(--card);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+      textarea { border:1px solid var(--border); border-radius:16px; min-height: 320px; padding:14px; background: var(--card);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06); color: var(--text); }
+      textarea::placeholder { color: var(--muted); }
+      /* Markdown rendering */
+      .markdown { border:1px solid var(--border); border-radius:16px; padding:16px; min-height: 320px; background: var(--card);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+      .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5 { margin: 12px 0 8px; }
+      .markdown p { margin: 8px 0; line-height: 1.7; }
+      .markdown ul, .markdown ol { margin: 8px 0 8px 20px; }
+      .markdown li { margin: 4px 0; }
+      .markdown code { background:#f0f2f5; padding:2px 6px; border-radius:6px; }
+      .markdown pre { background:#0f132a; color:#e6edf3; padding:12px; border-radius:12px; overflow:auto; }
+      .markdown blockquote { margin:8px 0; padding:8px 12px; border-left:3px solid var(--primary-dark); background:#fff7fa; border-radius:6px; }
+      .markdown a { color: var(--primary-dark); text-decoration: none; }
+
+      /* Dark theme overrides */
+      [data-theme="dark"] {
+        --border:#2c2f36; --muted:#a0a6b3; --ok:#2ecc71; --warn:#e74c3c;
+        --bg:#111317; --card:#1a1d22; --text:#e6edf3;
+        --page-grad: linear-gradient(180deg, #0e1116 0%, #111317 100%);
+        --header-grad: linear-gradient(90deg, #b85b13, #d38a1f, #b0235c, #5e2a93, #3a49b5);
+      }
+      [data-theme="dark"] button { border-color:#3a3f47; background: linear-gradient(180deg, #1c2026, #242a32); color: #e6edf3; }
+      [data-theme="dark"] .badge { background:#151922; border-color:#3a3f47; }
+      [data-theme="dark"] .date-item { background:#151922; border-color:#2c2f36; }
+      [data-theme="dark"] .date-item.selected { background: linear-gradient(180deg, #1c2026 0%, #1c1b20 100%); }
+      [data-theme="dark"] .markdown pre { background:#0b0f1a; }
+      .icon{
+        width: 18px;
+        height: 18px;
+        margin-right: 8px;
+      }
+      /* Futures info bar styles */
+      .info-row { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; font-size:13px; }
+      .info-item { display:flex; gap:6px; }
+      .info-label { color: var(--muted); }
+      .info-val { font-weight:600; }
+      .info-val.up { color: var(--warn); }   /* 涨：红 */
+      .info-val.down { color: var(--ok); }   /* 跌：绿 */
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>
+        <svg t="1762052320286" class="icon" viewBox="0 0 1025 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5189" width="200" height="200">
+          <path fill="#fff" d="M512.444583 263.628267A250.814562 250.814562 0 1 0 758.57439 514.442829a249.012733 249.012733 0 0 0-246.129807-250.814562z m0 398.204154a147.389592 147.389592 0 1 1 144.1463-147.389592 145.587763 145.587763 0 0 1-144.1463 147.389592zM512.444583 235.339556a115.31704 115.31704 0 0 0 114.416126-116.037772A114.416126 114.416126 0 1 0 398.20864 118.581053a115.31704 115.31704 0 0 0 114.235943 116.758503z m0-164.867331A47.928645 47.928645 0 0 1 560.373228 118.581053a47.02773 47.02773 0 1 1-94.055461 0 47.928645 47.928645 0 0 1 46.126816-48.829559zM909.027091 398.405058a116.037772 116.037772 0 1 0 114.235943 116.037771 115.31704 115.31704 0 0 0-114.235943-116.037771z m0 164.687148a48.829559 48.829559 0 1 1 46.847547-48.649377 47.928645 47.928645 0 0 1-46.847547 48.649377z" p-id="5190"></path>
+          <path fill="#fff" d="M512.444583 791.924457a116.037772 116.037772 0 1 0 114.416126 116.037771 115.31704 115.31704 0 0 0-114.416126-116.037771z m0 164.687148a48.649376 48.649376 0 1 1 47.928645-48.649377 47.928645 47.928645 0 0 1-47.928645 48.108828zM116.042258 398.405058a116.037772 116.037772 0 0 0 0 232.075543 116.037772 116.037772 0 0 0 0-232.075543z m0 164.687148a48.829559 48.829559 0 0 1 0-97.478936 48.829559 48.829559 0 0 1 0 97.478936z" p-id="5191"></path></svg>
+        <!-- 智能投顾 -->
+      </h1>
+      <div class="controls">
+        <input id="dateInput" type="date" />
+        <button id="themeToggleBtn">切换为黑暗</button>
+        <span class="status" id="status">状态：空闲</span>
+      </div>
+    </header>
+    <div class="container">
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="content">
+        <div class="controls">
+          <button id="refreshBtn">刷新日期</button>
+          <button id="generateBtn">生成今日建议</button>
+          <button id="showAdviceBtn">显示建议</button>
+          <button id="showNewsBtn">显示新闻</button>
+          <button id="showFuturesBtn">显示当前期货走势</button>
+        </div>
+        <div id="advice" class="markdown">选择左侧日期以查看内容...</div>
+        <div id="futuresInfo" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background: var(--card);color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.05);"></div>
+        <div id="futuresChart" style="width:100%;height:360px;display:none;border:1px solid var(--border);border-radius:16px;background: var(--card);box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-top:12px;"></div>
+      </main>
+      <section class="notes">
+        <div class="controls">
+          <button id="saveNoteBtn">保存笔记</button>
+        </div>
+        <textarea id="note" placeholder="在此书写该日的个人笔记..."></textarea>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const todayStr = new Date().toISOString().slice(0,10);
+      let selectedDate = todayStr;
+      let adviceBuffer = '';
+      let newsBuffer = '';
+      let viewMode = 'advice'; // 'advice' | 'news' | 'futures'
+      let futuresChartInstance = null;
+      let futuresTimer = null;
+      $('dateInput').value = todayStr;
+
+      // Theme management
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        const btn = $('themeToggleBtn');
+        if (btn) btn.textContent = theme === 'dark' ? '切换为明亮' : '切换为黑暗';
+      }
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      applyTheme(savedTheme);
+      $('themeToggleBtn').addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'light';
+        applyTheme(cur === 'dark' ? 'light' : 'dark');
+      });
+
+      async function listAdvices() {
+        try { const res = await fetch('/advices'); const data = await res.json(); return data.dates || []; }
+        catch (e) { return []; }
+      }
+      async function listNotes() {
+        try { const res = await fetch('/notes'); const data = await res.json(); return data.dates || []; }
+        catch (e) { return []; }
+      }
+      async function listNews() {
+        try { const res = await fetch('/news'); const data = await res.json(); return data.dates || []; }
+        catch (e) { return []; }
+      }
+
+      function renderSidebar(adviceDates, noteDates, newsDates) {
+        const wrap = $('sidebar');
+        wrap.innerHTML = '';
+        // 倒序（今日在上、历史在下）
+        for (let i = 0; i <= 27; i++) {
+          const d = new Date(); d.setDate(d.getDate() - i);
+          const ds = d.toISOString().slice(0,10);
+          const hasAdvice = adviceDates.includes(ds);
+          const hasNote = noteDates.includes(ds);
+          const hasNews = newsDates.includes(ds);
+          const item = document.createElement('div');
+          item.className = 'date-item' + (selectedDate === ds ? ' selected' : '');
+          item.innerHTML = `<div><strong>${ds}</strong>${ds===todayStr?'（今日）':''}</div>
+            <div class="badges">
+              <span class="badge ${hasAdvice?'ok':''}">建议${hasAdvice?'✓':''}</span>
+              <span class="badge ${hasNote?'ok':''}">笔记${hasNote?'✓':''}</span>
+              <span class="badge ${hasNews?'ok':''}">新闻${hasNews?'✓':''}</span>
+            </div>`;
+          item.addEventListener('click', () => { selectedDate = ds; $('dateInput').value = ds; loadAllForDate(ds); renderSidebar(adviceDates, noteDates, newsDates); });
+          wrap.appendChild(item);
+        }
+      }
+
+      async function fetchAdvice(date) {
+        const res = await fetch(`/advices/${date}`);
+        if (res.status === 404) return null;
+        const text = await res.text();
+        return text;
+      }
+
+      async function fetchNote(date) {
+        const res = await fetch(`/notes/${date}`);
+        if (res.status === 404) return '';
+        return await res.text();
+      }
+
+      async function fetchNews(date) {
+        const res = await fetch(`/news/${date}`);
+        if (res.status === 404) return '';
+        const data = await res.json();
+        return data?.content || '';
+      }
+
+      function sanitizeHref(href) {
+        try {
+          const u = new URL(href, window.location.origin);
+          if (["http:", "https:", "mailto:"].includes(u.protocol)) return u.href;
+        } catch (e) {}
+        return '#';
+      }
+
+      function mdToHtml(md) {
+        if (!md) return '';
+        let text = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const codeBlocks = [];
+        text = text.replace(/```([\s\S]*?)```/g, (_, code) => {
+          const idx = codeBlocks.length;
+          codeBlocks.push(`<pre><code>${code}</code></pre>`);
+          return `%%CODE_BLOCK_${idx}%%`;
+        });
+        text = text.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
+                   .replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
+                   .replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
+                   .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+                   .replace(/^##\s+(.*)$/gm, '<h2>$1</h2>')
+                   .replace(/^#\s+(.*)$/gm, '<h1>$1</h1>');
+        text = text.replace(/^---$/gm, '<hr/>')
+                   .replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>');
+        const lines = text.split('\n');
+        let out = [], inUl = false, inOl = false;
+        for (const ln of lines) {
+          if (/^\s*[-*]\s+/.test(ln)) {
+            if (!inUl) { out.push('<ul>'); inUl = true; }
+            out.push('<li>' + ln.replace(/^\s*[-*]\s+/, '') + '</li>');
+          } else if (/^\s*\d+\.\s+/.test(ln)) {
+            if (!inOl) { out.push('<ol>'); inOl = true; }
+            out.push('<li>' + ln.replace(/^\s*\d+\.\s+/, '') + '</li>');
+          } else {
+            if (inUl) { out.push('</ul>'); inUl = false; }
+            if (inOl) { out.push('</ol>'); inOl = false; }
+            out.push(ln);
+          }
+        }
+        if (inUl) out.push('</ul>');
+        if (inOl) out.push('</ol>');
+        text = out.join('\n');
+        text = text.replace(/`([^`]+)`/g, '<code>$1</code>')
+                   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                   .replace(/(^|\s)\*([^*]+)\*/g, '$1<em>$2</em>')
+                   .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, href) => `<a href="${sanitizeHref(href)}" target="_blank" rel="noopener noreferrer">${t}</a>`);
+        const blocks = text.split(/\n\n+/);
+        text = blocks.map(b => /<(h\d|ul|ol|pre|blockquote|hr|p|div|code)/.test(b) ? b : `<p>${b}</p>`).join('\n');
+        text = text.replace(/%%CODE_BLOCK_(\d+)%%/g, (_, i) => codeBlocks[Number(i)] || '');
+        return text;
+      }
+
+      function renderAdvice(html) { $('advice').innerHTML = html; }
+      function updateStatus(message) {
+        const viewLabel = viewMode === 'advice' ? '投资建议' : (viewMode === 'news' ? '新闻' : '期货');
+        $('status').textContent = `状态：${message}（视图：${viewLabel}）`;
+      }
+
+      function streamSelected() {
+        const es = new EventSource(`/stream/${selectedDate}`);
+        updateStatus('流式生成中...');
+        let oldBuffer = adviceBuffer
+        adviceBuffer = '';
+        renderAdvice('');
+        es.onmessage = (ev) => {
+          adviceBuffer += ev.data;
+          renderAdvice(mdToHtml(adviceBuffer));
+        };
+        es.addEventListener('done', () => {
+          updateStatus('生成完成');
+          es.close();
+          refreshSidebar();
+        });
+        es.addEventListener('error', (err) => {
+          console.log('err',err);
+          
+          adviceBuffer = oldBuffer;
+          renderAdvice(mdToHtml(adviceBuffer));
+          updateStatus('生成出错');
+          es.close();
+        });
+      }
+
+      async function loadAllForDate(date) {
+        updateStatus('读取中...');
+        const [advice, note, news] = await Promise.all([fetchAdvice(date), fetchNote(date), fetchNews(date)]);
+        adviceBuffer = advice || '';
+        newsBuffer = news || '';
+        if (viewMode === 'advice') {
+          if (adviceBuffer) {
+            renderAdvice(mdToHtml(adviceBuffer));
+            updateStatus('建议读取完成');
+          } else {
+            renderAdvice('');
+            updateStatus(date === todayStr ? '无建议，准备生成' : '该日无建议');
+          }
+        } else {
+          if (newsBuffer) {
+            renderAdvice(mdToHtml(newsBuffer));
+            updateStatus('新闻读取完成');
+          } else {
+            renderAdvice('');
+            updateStatus('该日无新闻');
+          }
+        }
+        $('note').value = note || '';
+      }
+
+      async function refreshSidebar() {
+        const [adv, notes, news] = await Promise.all([listAdvices(), listNotes(), listNews()]);
+        renderSidebar(adv, notes, news);
+      }
+
+      $('refreshBtn').addEventListener('click', refreshSidebar);
+      $('generateBtn').addEventListener('click', () => {
+        if (selectedDate !== todayStr) { $('status').textContent = '状态：仅支持今日生成'; return; }
+        streamSelected();
+      });
+      $('showAdviceBtn').addEventListener('click', () => {
+        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+        // 切换到文本视图时，确保隐藏期货图并显示内容区
+        showChart(false);
+        viewMode = 'advice';
+        if (adviceBuffer) {
+          renderAdvice(mdToHtml(adviceBuffer));
+          updateStatus('建议读取完成');
+        } else {
+          renderAdvice('');
+          updateStatus(selectedDate === todayStr ? '无建议，准备生成' : '该日无建议');
+        }
+      });
+      $('showNewsBtn').addEventListener('click', () => {
+        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+        // 切换到新闻视图时，确保隐藏期货图并显示内容区
+        showChart(false);
+        viewMode = 'news';
+        if (newsBuffer) {
+          renderAdvice(mdToHtml(newsBuffer));
+          updateStatus('新闻读取完成');
+        } else {
+          renderAdvice('');
+          updateStatus('该日无新闻');
+        }
+      });
+      async function fetchFutures(date) {
+        const res = await fetch(`/futures/${date}`);
+        if (res.status === 404) return null;
+        return await res.json();
+      }
+      function showChart(show) {
+        $('futuresChart').style.display = show ? 'block' : 'none';
+        $('futuresInfo').style.display = show ? 'block' : 'none';
+        $('advice').style.display = show ? 'none' : 'block';
+      }
+      $('showFuturesBtn').addEventListener('click', async () => {
+        viewMode = 'futures';
+        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+        updateStatus('期货走势读取中...');
+        const data = await fetchFutures(selectedDate);
+        if (!data || !Array.isArray(data.values) || data.values.length === 0) {
+          showChart(false);
+          renderAdvice('');
+          updateStatus('该日无期货数据');
+          return;
+        }
+        showChart(true);
+        const el = $('futuresChart');
+        // 为图表容器添加左侧内边距，确保左侧标签有空间
+        el.style.paddingLeft = '0px';
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const cs = getComputedStyle(document.documentElement);
+        const textColor = cs.getPropertyValue('--text').trim() || (isDark ? '#e6edf3' : '#222');
+        const borderColor = cs.getPropertyValue('--border').trim() || (isDark ? '#2c2f36' : '#e6e6e6');
+        const bgColor = cs.getPropertyValue('--card').trim() || (isDark ? '#1a1d22' : '#ffffff');
+        const chart = echarts.getInstanceByDom(el) || echarts.init(el, isDark ? 'dark' : null);
+        futuresChartInstance = chart;
+        // y轴数值格式化，避免数字过多造成难以阅读
+        const fmtPrice = (v) => {
+          return v.toFixed(2)
+        };
+        // 统计信息：开盘/最新/涨跌幅/最高/最低
+        const first = data.values?.[0] ?? null;
+        const last = data.values?.[data.values.length - 1] ?? null;
+        const openPrice = (data.dayOpen != null && Number.isFinite(Number(data.dayOpen)))
+          ? Number(data.dayOpen)
+          : (first ? Number(first[0]) : null);
+        const latestClose = last ? Number(last[1]) : null;
+        const maxHigh = data.values.reduce((m, v) => Math.max(m, Number(v?.[3] ?? m)), Number.MIN_SAFE_INTEGER);
+        const minLow = data.values.reduce((m, v) => Math.min(m, Number(v?.[2] ?? m)), Number.MAX_SAFE_INTEGER);
+        const diff = (Number.isFinite(latestClose) && Number.isFinite(openPrice)) ? (latestClose - openPrice) : null;
+        const diffPct = (Number.isFinite(latestClose) && Number.isFinite(openPrice) && openPrice !== 0)
+          ? ((latestClose - openPrice) / openPrice * 100) : null;
+        const sign = (diff ?? 0) >= 0 ? '+' : '';
+        const changeClass = diff == null ? '' : ((diff >= 0) ? 'up' : 'down');
+        const infoHtml = `
+          <div class="info-row">
+            <div class="info-item"><span class="info-label">开盘价：</span><span class="info-val">${openPrice != null ? fmtPrice(openPrice) : '-'}</span></div>
+            <div class="info-item"><span class="info-label">最新价：</span><span class="info-val ${changeClass} pill">${latestClose != null ? (latestClose >= (openPrice ?? latestClose) ? '▲ ' : '▼ ') + fmtPrice(latestClose) : '-'}</span></div>
+            <div class="info-item"><span class="info-label">涨跌额：</span><span class="info-val ${changeClass} pill">${diff != null ? (diff >= 0 ? '+' : '') + fmtPrice(diff) : '-'}</span></div>
+            <div class="info-item"><span class="info-label">涨跌幅：</span><span class="info-val ${changeClass} pill">${diffPct != null ? (diff >= 0 ? '+' : '') + diffPct.toFixed(2) + '%' : '-'}</span></div>
+            <div class="info-item"><span class="info-label">最高价：</span><span class="info-val">${Number.isFinite(maxHigh) ? fmtPrice(maxHigh) : '-'}</span></div>
+            <div class="info-item"><span class="info-label">最低价：</span><span class="info-val">${Number.isFinite(minLow) ? fmtPrice(minLow) : '-'}</span></div>
+          </div>`;
+        $('futuresInfo').innerHTML = infoHtml;
+        const option = {
+          title: { text: data.name || '期货走势', left: 'center', textStyle: { fontSize: 14 } },
+          tooltip: { trigger: 'axis' },
+          backgroundColor: bgColor,
+          xAxis: { type: 'category', data: data.times, boundaryGap: true, axisLine: { lineStyle: { color: borderColor } }, axisLabel: { color: textColor } },
+          yAxis: { scale: true, min: 'dataMin', max: 'dataMax', splitNumber: 5,
+            axisLine: { lineStyle: { color: borderColor } },
+            axisLabel: { color: textColor, formatter: (val) => fmtPrice(val), margin: 8 },
+            splitLine: { lineStyle: { color: borderColor } }
+          },
+          series: [{
+            type: 'candlestick',
+            data: data.values,
+            itemStyle: {
+              color: '#e74c3c',
+              color0: '#2ecc71',
+              borderColor: '#e74c3c',
+              borderColor0: '#2ecc71'
+            }
+          }],
+          grid: { left: 32, right: 24, top: 40, bottom: 30, containLabel: true },
+          // 默认展示全部长度，仅设置 inside 缩放并覆盖全区间
+          dataZoom: [{ type: 'inside', start: 0, end: 100 }],
+          axisPointer: { type: 'cross' }
+        };
+        chart.setOption(option);
+        updateStatus('期货走势展示完成');
+        // 开启每分钟自动刷新（仅在期货视图激活时）
+        futuresTimer = setInterval(async () => {
+          if (viewMode !== 'futures') return;
+          const data2 = await fetchFutures(selectedDate);
+          if (!data2 || !Array.isArray(data2.values) || data2.values.length === 0) return;
+          const first2 = data2.values?.[0] ?? null;
+          const last2 = data2.values?.[data2.values.length - 1] ?? null;
+          const open2 = (data2.dayOpen != null && Number.isFinite(Number(data2.dayOpen))) ? Number(data2.dayOpen) : (first2 ? Number(first2[0]) : null);
+          const close2 = last2 ? Number(last2[1]) : null;
+          const maxHigh2 = data2.values.reduce((m, v) => Math.max(m, Number(v?.[3] ?? m)), Number.MIN_SAFE_INTEGER);
+          const minLow2 = data2.values.reduce((m, v) => Math.min(m, Number(v?.[2] ?? m)), Number.MAX_SAFE_INTEGER);
+          const diff2 = (Number.isFinite(close2) && Number.isFinite(open2)) ? (close2 - open2) : null;
+          const pct2 = (Number.isFinite(close2) && Number.isFinite(open2) && open2 !== 0) ? ((close2 - open2) / open2 * 100) : null;
+          const changeClass2 = diff2 == null ? '' : ((diff2 >= 0) ? 'up' : 'down');
+          const fmt = (v) => Number(v).toFixed(2);
+          $('futuresInfo').innerHTML = `
+            <div class="info-row">
+              <div class="info-item"><span class="info-label">开盘价：</span><span class="info-val">${open2 != null ? fmt(open2) : '-'}</span></div>
+              <div class="info-item"><span class="info-label">最新价：</span><span class="info-val ${changeClass2} pill">${close2 != null ? (close2 >= (open2 ?? close2) ? '▲ ' : '▼ ') + fmt(close2) : '-'}</span></div>
+              <div class="info-item"><span class="info-label">涨跌额：</span><span class="info-val ${changeClass2} pill">${diff2 != null ? (diff2 >= 0 ? '+' : '') + fmt(diff2) : '-'}</span></div>
+              <div class="info-item"><span class="info-label">涨跌幅：</span><span class="info-val ${changeClass2} pill">${pct2 != null ? (diff2 >= 0 ? '+' : '') + pct2.toFixed(2) + '%' : '-'}</span></div>
+              <div class="info-item"><span class="info-label">最高价：</span><span class="info-val">${Number.isFinite(maxHigh2) ? fmt(maxHigh2) : '-'}</span></div>
+              <div class="info-item"><span class="info-label">最低价：</span><span class="info-val">${Number.isFinite(minLow2) ? fmt(minLow2) : '-'}</span></div>
+            </div>`;
+          if (futuresChartInstance) {
+            futuresChartInstance.setOption({ xAxis: { data: data2.times }, series: [{ type: 'candlestick', data: data2.values }] });
+          }
+        }, 60 * 1000);
+      });
+      $('saveNoteBtn').addEventListener('click', async () => {
+        const content = $('note').value;
+        $('status').textContent = '状态：保存中...';
+        await fetch(`/notes/${selectedDate}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content }) });
+        $('status').textContent = '状态：保存成功';
+        refreshSidebar();
+      });
+
+      refreshSidebar();
+      loadAllForDate(selectedDate);
+    </script>
+  </body>
+</html>
