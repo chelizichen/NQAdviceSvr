@@ -35,6 +35,7 @@
       button { padding: 8px 14px; border-radius:999px; border: 1px solid var(--border); background: linear-gradient(180deg, #fff, #f8f8f8); cursor:pointer;
         box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow .15s ease, transform .15s ease; }
       button:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
+      button.active { border-color: var(--primary-dark); color: var(--primary-dark); background: linear-gradient(180deg, #fff, #fff5f8); box-shadow: 0 8px 20px rgba(255,92,138,0.18); }
       #generateBtn { border-color: var(--primary-dark); color: #fff; background: linear-gradient(180deg, var(--primary), var(--primary-dark)); }
       .status { margin-left: 8px; color: var(--text); font-size: 12px; }
       textarea, pre { width: 100%; flex:1; font-family: ui-monospace, Menlo, monospace; }
@@ -63,6 +64,7 @@
         --header-grad: linear-gradient(90deg, #b85b13, #d38a1f, #b0235c, #5e2a93, #3a49b5);
       }
       [data-theme="dark"] button { border-color:#3a3f47; background: linear-gradient(180deg, #1c2026, #242a32); color: #e6edf3; }
+      [data-theme="dark"] button.active { border-color:#ff7aa2; color:#ff7aa2; background: linear-gradient(180deg, #242a32, #2b3038); box-shadow: 0 8px 24px rgba(255,92,138,0.22); }
       [data-theme="dark"] .badge { background:#151922; border-color:#3a3f47; }
       [data-theme="dark"] .date-item { background:#151922; border-color:#2c2f36; }
       [data-theme="dark"] .date-item.selected { background: linear-gradient(180deg, #1c2026 0%, #1c1b20 100%); }
@@ -128,6 +130,8 @@
       let futuresChartInstance = null;
       let futuresTimer = null;
       $('dateInput').value = todayStr;
+      // 初始激活默认视图按钮
+      setActiveView(viewMode);
 
       // Theme management
       function applyTheme(theme) {
@@ -142,6 +146,19 @@
         const cur = document.documentElement.getAttribute('data-theme') || 'light';
         applyTheme(cur === 'dark' ? 'light' : 'dark');
       });
+
+      function setActiveView(view) {
+        const map = {
+          advice: 'showAdviceBtn',
+          news: 'showNewsBtn',
+          futures: 'showFuturesBtn',
+        };
+        ['showAdviceBtn', 'showNewsBtn', 'showFuturesBtn'].forEach(id => {
+          const el = $(id);
+          if (!el) return;
+          el.classList.toggle('active', id === map[view]);
+        });
+      }
 
       async function listAdvices() {
         try { const res = await fetch('/advices'); const data = await res.json(); return data.dates || []; }
@@ -288,6 +305,12 @@
         const [advice, note, news] = await Promise.all([fetchAdvice(date), fetchNote(date), fetchNews(date)]);
         adviceBuffer = advice || '';
         newsBuffer = news || '';
+        if (viewMode === 'futures') {
+          if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+          await renderFutures(date);
+          $('note').value = note || '';
+          return;
+        }
         if (viewMode === 'advice') {
           if (adviceBuffer) {
             renderAdvice(mdToHtml(adviceBuffer));
@@ -323,6 +346,7 @@
         // 切换到文本视图时，确保隐藏期货图并显示内容区
         showChart(false);
         viewMode = 'advice';
+        setActiveView('advice');
         if (adviceBuffer) {
           renderAdvice(mdToHtml(adviceBuffer));
           updateStatus('建议读取完成');
@@ -336,6 +360,7 @@
         // 切换到新闻视图时，确保隐藏期货图并显示内容区
         showChart(false);
         viewMode = 'news';
+        setActiveView('news');
         if (newsBuffer) {
           renderAdvice(mdToHtml(newsBuffer));
           updateStatus('新闻读取完成');
@@ -354,11 +379,9 @@
         $('futuresInfo').style.display = show ? 'block' : 'none';
         $('advice').style.display = show ? 'none' : 'block';
       }
-      $('showFuturesBtn').addEventListener('click', async () => {
-        viewMode = 'futures';
-        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+      async function renderFutures(date) {
         updateStatus('期货走势读取中...');
-        const data = await fetchFutures(selectedDate);
+        const data = await fetchFutures(date);
         if (!data || !Array.isArray(data.values) || data.values.length === 0) {
           showChart(false);
           renderAdvice('');
@@ -367,7 +390,6 @@
         }
         showChart(true);
         const el = $('futuresChart');
-        // 为图表容器添加左侧内边距，确保左侧标签有空间
         el.style.paddingLeft = '0px';
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const cs = getComputedStyle(document.documentElement);
@@ -376,11 +398,7 @@
         const bgColor = cs.getPropertyValue('--card').trim() || (isDark ? '#1a1d22' : '#ffffff');
         const chart = echarts.getInstanceByDom(el) || echarts.init(el, isDark ? 'dark' : null);
         futuresChartInstance = chart;
-        // y轴数值格式化，避免数字过多造成难以阅读
-        const fmtPrice = (v) => {
-          return v.toFixed(2)
-        };
-        // 统计信息：开盘/最新/涨跌幅/最高/最低
+        const fmtPrice = (v) => { return v.toFixed(2) };
         const first = data.values?.[0] ?? null;
         const last = data.values?.[data.values.length - 1] ?? null;
         const openPrice = (data.dayOpen != null && Number.isFinite(Number(data.dayOpen)))
@@ -392,7 +410,6 @@
         const diff = (Number.isFinite(latestClose) && Number.isFinite(openPrice)) ? (latestClose - openPrice) : null;
         const diffPct = (Number.isFinite(latestClose) && Number.isFinite(openPrice) && openPrice !== 0)
           ? ((latestClose - openPrice) / openPrice * 100) : null;
-        const sign = (diff ?? 0) >= 0 ? '+' : '';
         const changeClass = diff == null ? '' : ((diff >= 0) ? 'up' : 'down');
         const infoHtml = `
           <div class="info-row">
@@ -417,21 +434,15 @@
           series: [{
             type: 'candlestick',
             data: data.values,
-            itemStyle: {
-              color: '#e74c3c',
-              color0: '#2ecc71',
-              borderColor: '#e74c3c',
-              borderColor0: '#2ecc71'
-            }
+            itemStyle: { color: '#e74c3c', color0: '#2ecc71', borderColor: '#e74c3c', borderColor0: '#2ecc71' }
           }],
           grid: { left: 32, right: 24, top: 40, bottom: 30, containLabel: true },
-          // 默认展示全部长度，仅设置 inside 缩放并覆盖全区间
           dataZoom: [{ type: 'inside', start: 0, end: 100 }],
           axisPointer: { type: 'cross' }
         };
         chart.setOption(option);
         updateStatus('期货走势展示完成');
-        // 开启每分钟自动刷新（仅在期货视图激活时）
+        // 重启每分钟自动刷新（针对传入的日期）
         futuresTimer = setInterval(async () => {
           if (viewMode !== 'futures') return;
           const data2 = await fetchFutures(selectedDate);
@@ -447,18 +458,24 @@
           const changeClass2 = diff2 == null ? '' : ((diff2 >= 0) ? 'up' : 'down');
           const fmt = (v) => Number(v).toFixed(2);
           $('futuresInfo').innerHTML = `
-            <div class="info-row">
-              <div class="info-item"><span class="info-label">开盘价：</span><span class="info-val">${open2 != null ? fmt(open2) : '-'}</span></div>
-              <div class="info-item"><span class="info-label">最新价：</span><span class="info-val ${changeClass2} pill">${close2 != null ? (close2 >= (open2 ?? close2) ? '▲ ' : '▼ ') + fmt(close2) : '-'}</span></div>
-              <div class="info-item"><span class="info-label">涨跌额：</span><span class="info-val ${changeClass2} pill">${diff2 != null ? (diff2 >= 0 ? '+' : '') + fmt(diff2) : '-'}</span></div>
-              <div class="info-item"><span class="info-label">涨跌幅：</span><span class="info-val ${changeClass2} pill">${pct2 != null ? (diff2 >= 0 ? '+' : '') + pct2.toFixed(2) + '%' : '-'}</span></div>
-              <div class="info-item"><span class="info-label">最高价：</span><span class="info-val">${Number.isFinite(maxHigh2) ? fmt(maxHigh2) : '-'}</span></div>
-              <div class="info-item"><span class="info-label">最低价：</span><span class="info-val">${Number.isFinite(minLow2) ? fmt(minLow2) : '-'}</span></div>
+            <div class=\"info-row\">
+              <div class=\"info-item\"><span class=\"info-label\">开盘价：</span><span class=\"info-val\">${open2 != null ? fmt(open2) : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">最新价：</span><span class=\"info-val ${changeClass2} pill\">${close2 != null ? (close2 >= (open2 ?? close2) ? '▲ ' : '▼ ') + fmt(close2) : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">涨跌额：</span><span class=\"info-val ${changeClass2} pill\">${diff2 != null ? (diff2 >= 0 ? '+' : '') + fmt(diff2) : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">涨跌幅：</span><span class=\"info-val ${changeClass2} pill\">${pct2 != null ? (diff2 >= 0 ? '+' : '') + pct2.toFixed(2) + '%' : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">最高价：</span><span class=\"info-val\">${Number.isFinite(maxHigh2) ? fmt(maxHigh2) : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">最低价：</span><span class=\"info-val\">${Number.isFinite(minLow2) ? fmt(minLow2) : '-'}</span></div>
             </div>`;
           if (futuresChartInstance) {
             futuresChartInstance.setOption({ xAxis: { data: data2.times }, series: [{ type: 'candlestick', data: data2.values }] });
           }
         }, 60 * 1000);
+      }
+      $('showFuturesBtn').addEventListener('click', async () => {
+        viewMode = 'futures';
+        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+        setActiveView('futures');
+        await renderFutures(selectedDate);
       });
       $('saveNoteBtn').addEventListener('click', async () => {
         const content = $('note').value;
