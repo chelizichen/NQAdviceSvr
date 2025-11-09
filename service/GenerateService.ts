@@ -5,7 +5,6 @@ export class GenerateService{
     constructor(private openai: OpenAIClient) {
     }
     async generate(content:string){
-        this.writeNews(content)
         const mixContent = await this.mixContent(content)
         const res = await this.openai.generateWithList([
             {
@@ -41,13 +40,5 @@ export class GenerateService{
 
         ${content}
         `
-    }
-
-    writeNews(content:string){
-        const cwd = process.cwd()
-        const newsDir = path.join(cwd, "data", "news")
-        const date = new Date().toISOString().split("T")[0]
-        const fileName = path.join(newsDir, `${date}.txt`)
-        fs.writeFileSync(fileName, content)
     }
 }

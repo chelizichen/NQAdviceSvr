@@ -5,14 +5,17 @@ import moment from "moment";
 import dotenv from "dotenv";
 import { Agent } from "./service/Agent";
 import "./service/Schedule";
+import { PromptAIStrategy } from "./service/Prompt";
 const envPath = path.resolve(process.cwd(), "config.env");
 dotenv.config({ path: envPath });
 const app = express();
 
 const DATA_DIR = path.join(process.cwd(), "data", "advices");
 const NOTES_DIR = path.join(process.cwd(), "data", "notes");
+const POSITIONS_DIR = path.join(process.cwd(), "data", "positions");
 const NEWS_DIR = path.join(process.cwd(), "data", "news");
 const FUTURES_DIR = path.join(process.cwd(), "data", "futures");
+const CHATS_DIR = path.join(process.cwd(), "data", "chats");
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -20,11 +23,17 @@ if (!fs.existsSync(DATA_DIR)) {
 if (!fs.existsSync(NOTES_DIR)) {
   fs.mkdirSync(NOTES_DIR, { recursive: true });
 }
+if (!fs.existsSync(POSITIONS_DIR)) {
+  fs.mkdirSync(POSITIONS_DIR, { recursive: true });
+}
 if (!fs.existsSync(NEWS_DIR)) {
   fs.mkdirSync(NEWS_DIR, { recursive: true });
 }
 if (!fs.existsSync(FUTURES_DIR)) {
   fs.mkdirSync(FUTURES_DIR, { recursive: true });
+}
+if (!fs.existsSync(CHATS_DIR)) {
+  fs.mkdirSync(CHATS_DIR, { recursive: true });
 }
 
 app.use(express.json());
@@ -83,6 +92,13 @@ function notePathForDate(dateStr: string) {
   const safe = dateStr.replace(/[^0-9\-]/g, "");
   return path.join(NOTES_DIR, `${safe}.txt`);
 }
+function positionsPathForDate(dateStr: string) {
+  const safe = dateStr.replace(/[^0-9\-]/g, "");
+  return path.join(POSITIONS_DIR, `${safe}.json`);
+}
+function assetsPath() {
+  return path.join(POSITIONS_DIR, `assets.json`);
+}
 function newsPathForDate(dateStr: string) {
   const safe = dateStr.replace(/[^0-9\-]/g, "");
   return path.join(NEWS_DIR, `${safe}.txt`);
@@ -90,6 +106,10 @@ function newsPathForDate(dateStr: string) {
 function futuresPathForDate(dateStr: string) {
   const safe = dateStr.replace(/[^0-9\-]/g, "");
   return path.join(FUTURES_DIR, `${safe}.txt`);
+}
+function chatPathForDate(dateStr: string) {
+  const safe = dateStr.replace(/[^0-9\-]/g, "");
+  return path.join(CHATS_DIR, `${safe}.json`);
 }
 
 app.get("/advices", (req: Request, res: Response) => {
@@ -108,12 +128,50 @@ app.get("/notes", (req: Request, res: Response) => {
   res.json({ dates });
 });
 
+// Positions listing
+app.get("/positions", (req: Request, res: Response) => {
+  const files = fs.existsSync(POSITIONS_DIR)
+    ? fs.readdirSync(POSITIONS_DIR).filter((f) => f.endsWith(".json"))
+    : [];
+  const dates = files.map((f) => f.replace(/\.json$/, "")).sort();
+  res.json({ dates });
+});
+
 app.get("/news", (req: Request, res: Response) => {
   const files = fs.existsSync(NEWS_DIR)
     ? fs.readdirSync(NEWS_DIR).filter((f) => f.endsWith(".txt"))
     : [];
   const dates = files.map((f) => f.replace(/\.txt$/, "")).sort();
   res.json({ dates });
+});
+
+// Global assets endpoints
+app.get("/assets", (req: Request, res: Response) => {
+  try {
+    const aPath = assetsPath();
+    if (!fs.existsSync(aPath)) return res.json({ entries: [], totalAssets: 0 });
+    const json = JSON.parse(fs.readFileSync(aPath, "utf-8"));
+    const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+    const totalAssetsRaw = (json as any)?.totalAssets;
+    const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+    res.json({ entries, totalAssets, updatedAt: (json as any)?.updatedAt || null });
+  } catch (err) {
+    res.status(500).json({ error: "invalid_assets_format" });
+  }
+});
+app.put("/assets", (req: Request, res: Response) => {
+  try {
+    const entries = (req.body as any)?.entries;
+    const totalAssetsRaw = (req.body as any)?.totalAssets;
+    if (!Array.isArray(entries)) return res.status(400).json({ error: "entries_required" });
+    const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+    const payload = { updatedAt: new Date().toISOString(), entries, totalAssets };
+    const aPath = assetsPath();
+    fs.writeFileSync(aPath, JSON.stringify(payload, null, 2), "utf-8");
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "assets_write_failed" });
+  }
 });
 
 // Futures listing
@@ -143,6 +201,32 @@ app.get("/notes/:date", (req: Request<{ date: string }>, res: Response) => {
   }
   const content = fs.readFileSync(filePath, "utf-8");
   res.type("text/plain").send(content);
+});
+
+app.get("/positions/:date", (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  const filePath = positionsPathForDate(date);
+  try {
+    if (fs.existsSync(filePath)) {
+      const json = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+      const totalAssetsRaw = (json as any)?.totalAssets;
+      const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+      return res.json({ entries, totalAssets });
+    }
+    // fallback to global assets
+    const aPath = assetsPath();
+    if (fs.existsSync(aPath)) {
+      const json = JSON.parse(fs.readFileSync(aPath, "utf-8"));
+      const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+      const totalAssetsRaw = (json as any)?.totalAssets;
+      const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+      return res.json({ entries, totalAssets });
+    }
+    return res.json({ entries: [], totalAssets: 0 });
+  } catch (err) {
+    res.status(500).json({ error: "invalid_positions_format" });
+  }
 });
 
 app.get("/news/:date", (req: Request<{ date: string }>, res: Response) => {
@@ -219,11 +303,115 @@ app.get("/futures/:date", (req: Request<{ date: string }>, res: Response) => {
   }
 });
 
+// Futures weekly aggregated data (Mon -> min(req_date, Fri))
+app.get("/futures/week/:date", (req: Request<{ date: string }>, res: Response) => {
+  const reqDate = req.params.date;
+  try {
+    const weekStart = moment(reqDate).startOf("isoWeek"); // Monday
+    const weekEndTarget = moment(reqDate);
+    const friday = moment(reqDate).startOf("isoWeek").add(4, "days");
+    const end = weekEndTarget.isBefore(friday) ? weekEndTarget : friday;
+    const days: string[] = [];
+    for (let d = weekStart.clone(); !d.isAfter(end, "day"); d.add(1, "day")) {
+      days.push(d.format("YYYY-MM-DD"));
+    }
+    let name = "期货";
+    let mondayOpen: number | null = null;
+    let weekLastClose: number | null = null;
+    let weekLastCloseDate: string | null = null;
+    const times: string[] = [];
+    const values: number[][] = [];
+    for (const day of days) {
+      const filePath = futuresPathForDate(day);
+      if (!fs.existsSync(filePath)) continue;
+      const content = fs.readFileSync(filePath, "utf-8");
+      const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      const closes: number[] = [];
+      let dayOpen: number | null = null;
+      for (const ln of lines) {
+        const map: Record<string, string> = {};
+        for (const part of ln.split("|").map((s) => s.trim())) {
+          const idx = part.indexOf(":");
+          if (idx > 0) {
+            const k = part.slice(0, idx);
+            const v = part.slice(idx + 1);
+            map[k] = v;
+          }
+        }
+        if (!name) name = map["名称"] || name;
+        const now = map["当前时间"] || "";
+        const closeStr = map["现价"] || map["最新价"] || map["收盘价"] || "";
+        const close = Number(closeStr);
+        const openStr = map["今日开盘价"] || map["开盘价"] || "";
+        const openNum = Number(openStr);
+        if (!Number.isNaN(openNum) && Number.isFinite(openNum)) {
+          dayOpen = openNum; // 覆盖到该日最新记录
+        }
+        if (!Number.isNaN(close)) {
+          times.push(`${day} ${now}`);
+          const prevMaybe = closes.length > 0 ? closes[closes.length - 1] : undefined;
+          const open = Number(prevMaybe ?? close);
+          const high = Math.max(open, close);
+          const low = Math.min(open, close);
+          values.push([open, close, low, high]);
+          closes.push(close);
+        }
+      }
+      const firstDay = days[0] ?? "";
+      if (mondayOpen == null && dayOpen != null && day === firstDay) {
+        mondayOpen = dayOpen;
+      }
+      if (closes.length > 0) {
+        const lastClose = closes[closes.length - 1];
+        if (typeof lastClose === 'number') {
+          weekLastClose = lastClose;
+          weekLastCloseDate = day;
+        }
+      }
+    }
+    let weeklyChange: number | null = null;
+    let weeklyChangePct: number | null = null;
+    if (mondayOpen != null && weekLastClose != null) {
+      weeklyChange = Number((weekLastClose - mondayOpen).toFixed(2));
+      weeklyChangePct = Number(((weeklyChange / mondayOpen) * 100).toFixed(2));
+    }
+    res.json({
+      name,
+      weekStart: weekStart.format("YYYY-MM-DD"),
+      weekEnd: end.format("YYYY-MM-DD"),
+      times,
+      values,
+      mondayOpen,
+      weekLastClose,
+      weekLastCloseDate,
+      weeklyChange,
+      weeklyChangePct,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "invalid_weekly_futures" });
+  }
+});
+
 app.put("/notes/:date", (req: Request<{ date: string }>, res: Response) => {
   const date = req.params.date;
   const content = typeof req.body?.content === "string" ? req.body.content : "";
   const filePath = notePathForDate(date);
   fs.writeFileSync(filePath, content, "utf-8");
+  res.json({ ok: true });
+});
+
+app.put("/positions/:date", (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  const entries = (req.body as any)?.entries;
+  const totalAssetsRaw = (req.body as any)?.totalAssets;
+  if (!Array.isArray(entries)) {
+    return res.status(400).json({ error: "entries_required" });
+  }
+  const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+  const payload: any = { date, updatedAt: new Date().toISOString(), entries };
+  if (totalAssets >= 0) payload.totalAssets = totalAssets;
+  const filePath = positionsPathForDate(date);
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
   res.json({ ok: true });
 });
 
@@ -280,6 +468,278 @@ app.get("/stream/:date", async (req: Request<{ date: string }>, res: Response) =
   } catch (err) {
     console.log("error", err);
     stream.end();
+    res.write("event: error\n");
+    res.write(`data: ${JSON.stringify({ message: (err as Error)?.message || "error" })}\n\n`);
+    res.end();
+  }
+});
+
+// Chat: get history
+app.get("/chat/:date", (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  const filePath = chatPathForDate(date);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  try {
+    const json = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    res.json(json);
+  } catch (err) {
+    res.status(500).json({ error: "invalid_chat_format" });
+  }
+});
+
+// Chat: start conversation by generating advice from latest news
+app.post("/chat/start/:date", async (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  try {
+    const agent = new Agent();
+    const newsMixed = await agent.mixNews();
+    agent.writeNews(newsMixed)
+    const instructions = PromptAIStrategy;
+    // positions snapshot（统一读取全局资产文件 assets.json）
+    let positionsSummary = "";
+    const aPath = assetsPath();
+    const readAssets = (p: string) => {
+      const json = JSON.parse(fs.readFileSync(p, "utf-8"));
+      const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+      const totalAssetsRaw = (json as any)?.totalAssets;
+      const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+      return { entries, totalAssets };
+    };
+    try {
+      const { entries, totalAssets } = fs.existsSync(aPath)
+        ? readAssets(aPath)
+        : { entries: [], totalAssets: 0 };
+      if (entries.length) {
+        const lines = entries.map((e: any) => {
+            const t = e.time ? `@${e.time}` : "";
+            if (e.assetName && Number.isFinite(Number(e.amount))) {
+              const amount = Number(e.amount);
+              const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+            }
+            if (e.fundCode || e.fundName) {
+              const name = e.fundName || "";
+              const code = e.fundCode || e.code || "";
+              const shares = e.shares ?? e.qty ?? e.volume ?? 0;
+              const cost = e.cost ?? e.price ?? "-";
+              const platform = e.platform || "";
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+            }
+            const sym = e.symbol || e.code || "合约";
+            const side = e.side || "方向";
+            const qty = e.qty || e.volume || 0;
+            const price = e.price ?? "-";
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+        });
+        positionsSummary = `当前仓位：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}`;
+      }
+    } catch {}
+    const opener = `阅读下面内容并结合我的仓位，给出投资建议；当没有明确信号时，请保持观望。\n\n${positionsSummary ? positionsSummary + "\n\n" : ""}${newsMixed}`;
+    // Use shared OpenAI client via Agent to avoid multiple inits
+    const openai = (Agent as any).openai ?? new (require("./service/LLMService").OpenAIClient)();
+    (Agent as any).openai = openai;
+    const messages = [
+      { role: "assistant", content: instructions },
+      { role: "user", content: opener },
+    ];
+    const completion = await openai.generateWithList(messages as any);
+    let advice = "";
+    const canStream = typeof Symbol !== 'undefined'
+      && (Symbol as any).asyncIterator
+      && typeof (completion as any)[(Symbol as any).asyncIterator] === 'function';
+    if (canStream) {
+      for await (const part of completion as any) {
+        const delta = part?.choices?.[0]?.delta?.content ?? "";
+        if (!delta) continue;
+        advice += delta;
+      }
+    } else {
+      advice = (completion as any)?.choices?.[0]?.message?.content ?? "";
+    }
+    const chat = {
+      date,
+      createdAt: new Date().toISOString(),
+      messages: [
+        { role: "assistant", content: instructions },
+        { role: "user", content: opener },
+        { role: "assistant", content: advice },
+      ],
+    };
+    fs.writeFileSync(chatPathForDate(date), JSON.stringify(chat, null, 2), "utf-8");
+    res.json(chat);
+  } catch (err) {
+    console.error("chat_start_error", err);
+    res.status(500).json({ error: "chat_start_failed" });
+  }
+});
+
+// Chat: continue conversation
+app.post("/chat/:date/message", async (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  const userText = String((req.body as any)?.text || "").trim();
+  if (!userText) return res.status(400).json({ error: "empty_text" });
+  const filePath = chatPathForDate(date);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  try {
+    const chat = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const baseMessages = (chat?.messages as any[]) || [];
+    // prepend positions context (not persisted) - read from assets.json only
+    let positionsMessage: any = null;
+    const aPath = assetsPath();
+    if (fs.existsSync(aPath)) {
+      try {
+        const json = JSON.parse(fs.readFileSync(aPath, "utf-8"));
+        const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+        const totalAssetsRaw = (json as any)?.totalAssets;
+        const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+        if (entries.length) {
+          const lines = entries.map((e: any) => {
+            const t = e.time ? `@${e.time}` : "";
+            if (e.assetName && Number.isFinite(Number(e.amount))) {
+              const amount = Number(e.amount);
+              const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+            }
+            if (e.fundCode || e.fundName) {
+              const name = e.fundName || "";
+              const code = e.fundCode || e.code || "";
+              const shares = e.shares ?? e.qty ?? e.volume ?? 0;
+              const cost = e.cost ?? e.price ?? "-";
+              const platform = e.platform || "";
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+            }
+            const sym = e.symbol || e.code || "合约";
+            const side = e.side || "方向";
+            const qty = e.qty || e.volume || 0;
+            const price = e.price ?? "-";
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+          });
+          positionsMessage = { role: "system", content: `仓位快照：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}` };
+        }
+      } catch {}
+    }
+    const messages = positionsMessage ? [positionsMessage, ...baseMessages, { role: "user", content: userText }] : [...baseMessages, { role: "user", content: userText }];
+    const openai = (Agent as any).openai ?? new (require("./service/LLMService").OpenAIClient)();
+    (Agent as any).openai = openai;
+    const completion = await openai.generateWithList(messages as any);
+    let reply = "";
+    const canStream = typeof Symbol !== 'undefined'
+      && (Symbol as any).asyncIterator
+      && typeof (completion as any)[(Symbol as any).asyncIterator] === 'function';
+    if (canStream) {
+      for await (const part of completion as any) {
+        const delta = part?.choices?.[0]?.delta?.content ?? "";
+        if (!delta) continue;
+        reply += delta;
+      }
+    } else {
+      reply = (completion as any)?.choices?.[0]?.message?.content ?? "";
+    }
+    const persisted = [...baseMessages, { role: "user", content: userText }, { role: "assistant", content: reply }];
+    chat.messages = persisted;
+    chat.updatedAt = new Date().toISOString();
+    fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), "utf-8");
+    res.json(chat);
+  } catch (err) {
+    console.error("chat_continue_error", err);
+    res.status(500).json({ error: "chat_message_failed" });
+  }
+});
+
+// Chat: stream reply while sending a message (SSE)
+app.get("/chat/:date/message/stream", async (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  const userText = String((req.query as any)?.text || "").trim();
+  if (!userText) {
+    res.status(400).json({ error: "empty_text" });
+    return;
+  }
+  const filePath = chatPathForDate(date);
+  if (!fs.existsSync(filePath)) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  (res as any).flushHeaders?.();
+
+  try {
+    const chat = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const baseMessages = (chat?.messages as any[]) || [];
+    // prepend positions context (not persisted) - read from assets.json only
+    let positionsMessage: any = null;
+    const aPath = assetsPath();
+    if (fs.existsSync(aPath)) {
+      try {
+        const json = JSON.parse(fs.readFileSync(aPath, "utf-8"));
+        const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+        const totalAssetsRaw = (json as any)?.totalAssets;
+        const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+        if (entries.length) {
+          const lines = entries.map((e: any) => {
+            const t = e.time ? `@${e.time}` : "";
+            if (e.assetName && Number.isFinite(Number(e.amount))) {
+              const amount = Number(e.amount);
+              const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+            }
+            if (e.fundCode || e.fundName) {
+              const name = e.fundName || "";
+              const code = e.fundCode || e.code || "";
+              const shares = e.shares ?? e.qty ?? e.volume ?? 0;
+              const cost = e.cost ?? e.price ?? "-";
+              const platform = e.platform || "";
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+            }
+            const sym = e.symbol || e.code || "合约";
+            const side = e.side || "方向";
+            const qty = e.qty || e.volume || 0;
+            const price = e.price ?? "-";
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+          });
+          positionsMessage = { role: "system", content: `仓位快照：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}` };
+        }
+      } catch {}
+    }
+    const messages = positionsMessage ? [positionsMessage, ...baseMessages, { role: "user", content: userText }] : [...baseMessages, { role: "user", content: userText }];
+    const openai = (Agent as any).openai ?? new (require("./service/LLMService").OpenAIClient)();
+    (Agent as any).openai = openai;
+    const completion = await openai.generateWithList(messages as any);
+    let reply = "";
+    const canStream = typeof Symbol !== 'undefined'
+      && (Symbol as any).asyncIterator
+      && typeof (completion as any)[(Symbol as any).asyncIterator] === 'function';
+    if (canStream) {
+      for await (const part of completion as any) {
+        const delta = part?.choices?.[0]?.delta?.content ?? "";
+        if (!delta) continue;
+        reply += delta;
+        res.write(`data: ${delta}\n\n`);
+      }
+    } else {
+      const text = (completion as any)?.choices?.[0]?.message?.content ?? "";
+      if (text) {
+        reply += text;
+        res.write(`data: ${text}\n\n`);
+      } else {
+        throw new Error("completion_not_stream_or_text");
+      }
+    }
+    // finalize and persist
+    const persisted = [...baseMessages, { role: "user", content: userText }, { role: "assistant", content: reply }];
+    chat.messages = persisted;
+    chat.updatedAt = new Date().toISOString();
+    fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), "utf-8");
+    res.write("event: done\n");
+    res.write("data: end\n\n");
+    res.end();
+  } catch (err) {
+    console.error("chat_stream_error", err);
     res.write("event: error\n");
     res.write(`data: ${JSON.stringify({ message: (err as Error)?.message || "error" })}\n\n`);
     res.end();
