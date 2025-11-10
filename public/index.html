@@ -121,7 +121,7 @@
           <button id="showAdviceBtn" style="display: none;">显示建议</button>
           <button id="showChatBtn">显示聊天</button>
           <button id="startChatBtn">开始对话</button>
-          <button id="showNewsBtn">显示新闻</button>
+          <button id="showNewsBtn" style="display: none;">显示新闻</button>
           <button id="showFuturesBtn">显示当前期货走势</button>
           <button id="showWeeklyBtn">显示周线走势</button>
 
@@ -135,6 +135,7 @@
           <div style="display:flex;gap:8px;border-top:1px solid var(--border);padding:10px 12px;">
             <input id="chatInput" type="text" placeholder="输入消息..." style="flex:1;border:1px solid var(--border);border-radius:12px;padding:8px;background: var(--card);color: var(--text);" />
             <button id="sendChatBtn">发送</button>
+            <button id="fetchLatestBtn">获取最新消息</button>
           </div>
         </div>
       </main>
@@ -203,16 +204,12 @@
         try { const res = await fetch('/advices'); const data = await res.json(); return data.dates || []; }
         catch (e) { return []; }
       }
-      async function listPositions() {
-        try { const res = await fetch('/positions'); const data = await res.json(); return data.dates || []; }
-        catch (e) { return []; }
-      }
-      async function listNews() {
-        try { const res = await fetch('/news'); const data = await res.json(); return data.dates || []; }
+      async function listChats() {
+        try { const res = await fetch('/chats'); const data = await res.json(); return data.dates || []; }
         catch (e) { return []; }
       }
 
-      function renderSidebar(adviceDates, positionsDates, newsDates) {
+      function renderSidebar(adviceDates, chatDates) {
         const wrap = $('sidebar');
         wrap.innerHTML = '';
         // 倒序（今日在上、历史在下）
@@ -220,16 +217,14 @@
           const d = new Date(); d.setDate(d.getDate() - i);
           const ds = d.toISOString().slice(0,10);
           const hasAdvice = adviceDates.includes(ds);
-          const hasPositions = positionsDates.includes(ds);
-          const hasNews = newsDates.includes(ds);
+          const hasChat = chatDates.includes(ds);
           const item = document.createElement('div');
           item.className = 'date-item' + (selectedDate === ds ? ' selected' : '');
           item.innerHTML = `<div><strong>${ds}</strong>${ds===todayStr?'（今日）':''}</div>
             <div class="badges">
-              <span class="badge ${hasPositions?'ok':''}">仓位${hasPositions?'✓':''}</span>
-              <span class="badge ${hasNews?'ok':''}">新闻${hasNews?'✓':''}</span>
+              <span class="badge ${hasChat?'ok':''}">对话${hasChat?'✓':''}</span>
             </div>`;
-          item.addEventListener('click', () => { selectedDate = ds; $('dateInput').value = ds; loadAllForDate(ds); renderSidebar(adviceDates, positionsDates, newsDates); });
+          item.addEventListener('click', () => { selectedDate = ds; $('dateInput').value = ds; loadAllForDate(ds); renderSidebar(adviceDates, chatDates); });
           wrap.appendChild(item);
         }
       }
@@ -460,8 +455,8 @@
       }
 
       async function refreshSidebar() {
-        const [adv, pos, news] = await Promise.all([listAdvices(), listPositions(), listNews()]);
-        renderSidebar(adv, pos, news);
+        const [adv, chats] = await Promise.all([listAdvices(), listChats()]);
+        renderSidebar(adv, chats);
       }
 
       $('refreshBtn').addEventListener('click', refreshSidebar);
@@ -725,6 +720,13 @@
           const nameEl = document.createElement('div');
           nameEl.className = 'chat-name';
           nameEl.textContent = m.role === 'user' ? '我' : '助理';
+          // 轻微样式标签：标记“最新消息增量”
+          if (m.tag === 'latest_news' && m.role !== 'user') {
+            const badge = document.createElement('span');
+            badge.textContent = '最新消息增量';
+            badge.style.cssText = 'display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:10px;';
+            nameEl.appendChild(badge);
+          }
           const contentEl = document.createElement('div');
           contentEl.className = 'chat-content';
           contentEl.innerHTML = mdToHtml(String(m.content || ''));
@@ -761,6 +763,61 @@
         renderChat(chat);
         updateStatus('对话初始化完成');
         await updateChatControls(selectedDate);
+      });
+      $('fetchLatestBtn').addEventListener('click', async () => {
+        viewMode = 'chat';
+        setActiveView('chat');
+        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+        updateStatus('获取最新消息中...');
+        const btn = $('fetchLatestBtn');
+        btn.disabled = true;
+        btn.classList.add('active');
+        try {
+          // 流式展示增量建议
+          showChat(true);
+          const box = $('chatMessages');
+          const asRow = document.createElement('div'); asRow.className = 'chat-row assistant';
+          const asBubble = document.createElement('div'); asBubble.className = 'chat-bubble assistant';
+          const asName = document.createElement('div'); asName.className = 'chat-name'; asName.textContent = '助理';
+          const badge = document.createElement('span'); badge.textContent = '最新消息增量'; badge.style.cssText = 'display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:10px;';
+          asName.appendChild(badge);
+          const asContent = document.createElement('div'); asContent.className = 'chat-content';
+          asBubble.appendChild(asName); asBubble.appendChild(asContent);
+          asRow.appendChild(asBubble);
+          box.appendChild(asRow);
+          box.scrollTop = box.scrollHeight;
+
+          const es = new EventSource(`/chat/${selectedDate}/news/latest/stream`);
+          let buffer = '';
+          es.onmessage = (ev) => {
+            buffer += ev.data;
+            asContent.innerHTML = mdToHtml(buffer);
+            box.scrollTop = box.scrollHeight;
+          };
+          es.addEventListener('done', async () => {
+            es.close();
+            btn.disabled = false;
+            btn.classList.remove('active');
+            const chat = await fetchChat(selectedDate);
+            if (chat) {
+              renderChat(chat);
+              updateStatus('已基于最新消息更新建议');
+            } else {
+              updateStatus('已更新，但记录读取失败');
+            }
+            await updateChatControls(selectedDate);
+          });
+          es.addEventListener('error', () => {
+            es.close();
+            btn.disabled = false;
+            btn.classList.remove('active');
+            updateStatus('获取最新消息失败');
+          });
+        } catch (e) {
+          btn.disabled = false;
+          btn.classList.remove('active');
+          updateStatus('获取最新消息失败');
+        }
       });
       $('sendChatBtn').addEventListener('click', async () => {
         const text = $('chatInput').value.trim();

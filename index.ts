@@ -35,7 +35,6 @@ if (!fs.existsSync(FUTURES_DIR)) {
 if (!fs.existsSync(CHATS_DIR)) {
   fs.mkdirSync(CHATS_DIR, { recursive: true });
 }
-
 app.use(express.json());
 
 function parseCookies(cookieHeader?: string) {
@@ -243,6 +242,15 @@ app.get("/news/:date", (req: Request<{ date: string }>, res: Response) => {
   }
 });
 
+// Chats listing for sidebar highlighting
+app.get("/chats", (req: Request, res: Response) => {
+  const files = fs.existsSync(CHATS_DIR)
+    ? fs.readdirSync(CHATS_DIR).filter((f) => f.endsWith(".json"))
+    : [];
+  const dates = files.map((f) => f.replace(/\.json$/, "")).sort();
+  res.json({ dates });
+});
+
 // Futures data for a date -> K-line series
 app.get("/futures/:date", (req: Request<{ date: string }>, res: Response) => {
   const date = req.params.date;
@@ -309,7 +317,7 @@ app.get("/futures/week/:date", (req: Request<{ date: string }>, res: Response) =
   try {
     const weekStart = moment(reqDate).startOf("isoWeek"); // Monday
     const weekEndTarget = moment(reqDate);
-    const friday = moment(reqDate).startOf("isoWeek").add(4, "days");
+    const friday = moment(reqDate).startOf("isoWeek").add(5, "days");
     const end = weekEndTarget.isBefore(friday) ? weekEndTarget : friday;
     const days: string[] = [];
     for (let d = weekStart.clone(); !d.isAfter(end, "day"); d.add(1, "day")) {
@@ -647,6 +655,123 @@ app.post("/chat/:date/message", async (req: Request<{ date: string }>, res: Resp
   } catch (err) {
     console.error("chat_continue_error", err);
     res.status(500).json({ error: "chat_message_failed" });
+  }
+});
+
+// Chat: stream incremental advice based on latest news (SSE)
+app.get("/chat/:date/news/latest/stream", async (req: Request<{ date: string }>, res: Response) => {
+  const date = req.params.date;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  (res as any).flushHeaders?.();
+
+  try {
+    const agent = new Agent();
+    const newsMixed = await agent.mixNews();
+    agent.writeNews(newsMixed);
+
+    const filePath = chatPathForDate(date);
+    let chat: any = null;
+    if (fs.existsSync(filePath)) {
+      try { chat = JSON.parse(fs.readFileSync(filePath, "utf-8")); } catch {}
+    }
+    if (!chat) {
+      chat = {
+        date,
+        createdAt: new Date().toISOString(),
+        messages: [
+          { role: "assistant", content: PromptAIStrategy },
+        ],
+      };
+    }
+    const baseMessages = (chat?.messages as any[]) || [];
+
+    // prepend positions context (not persisted) - read from assets.json only
+    let positionsMessage: any = null;
+    const aPath = assetsPath();
+    if (fs.existsSync(aPath)) {
+      try {
+        const json = JSON.parse(fs.readFileSync(aPath, "utf-8"));
+        const entries = Array.isArray((json as any)?.entries) ? (json as any).entries : [];
+        const totalAssetsRaw = (json as any)?.totalAssets;
+        const totalAssets = Number.isFinite(Number(totalAssetsRaw)) ? Number(totalAssetsRaw) : 0;
+        if (entries.length) {
+          const lines = entries.map((e: any) => {
+            const t = e.time ? `@${e.time}` : "";
+            if (e.assetName && Number.isFinite(Number(e.amount))) {
+              const amount = Number(e.amount);
+              const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+            }
+            if (e.fundCode || e.fundName) {
+              const name = e.fundName || "";
+              const code = e.fundCode || e.code || "";
+              const shares = e.shares ?? e.qty ?? e.volume ?? 0;
+              const cost = e.cost ?? e.price ?? "-";
+              const platform = e.platform || "";
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+            }
+            const sym = e.symbol || e.code || "合约";
+            const side = e.side || "方向";
+            const qty = e.qty || e.volume || 0;
+            const price = e.price ?? "-";
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+          });
+          positionsMessage = { role: "system", content: `仓位快照：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}` };
+        }
+      } catch {}
+    }
+
+    const openai = (Agent as any).openai ?? new (require("./service/LLMService").OpenAIClient)();
+    (Agent as any).openai = openai;
+    const GenerateService = require("./service/GenerateService").GenerateService;
+    const gen = new GenerateService();
+    const latestContent = await gen.mixContent(newsMixed);
+    const messages = [
+      ...(positionsMessage ? [positionsMessage] : []),
+      ...baseMessages,
+      { role: "system", content: latestContent },
+      { role: "user", content: "请结合最新消息生成增量建议，避免重复旧信息；无新信号则保持观望。" },
+    ];
+
+    const completion = await openai.generateWithList(messages as any);
+    let reply = "";
+    const canStream = typeof Symbol !== 'undefined'
+      && (Symbol as any).asyncIterator
+      && typeof (completion as any)[(Symbol as any).asyncIterator] === 'function';
+    if (canStream) {
+      for await (const part of completion as any) {
+        const delta = part?.choices?.[0]?.delta?.content ?? "";
+        if (!delta) continue;
+        reply += delta;
+        res.write(`data: ${delta}\n\n`);
+      }
+    } else {
+      const text = (completion as any)?.choices?.[0]?.message?.content ?? "";
+      if (text) {
+        reply += text;
+        res.write(`data: ${text}\n\n`);
+      } else {
+        throw new Error("completion_not_stream_or_text");
+      }
+    }
+
+    // finalize and persist with tag
+    const userMsg = { role: "user", content: "最新消息更新（自动）" };
+    const asstMsg = { role: "assistant", content: reply, tag: "latest_news" } as any;
+    const persisted = [...baseMessages, userMsg, asstMsg];
+    chat.messages = persisted;
+    chat.updatedAt = new Date().toISOString();
+    fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), "utf-8");
+    res.write("event: done\n");
+    res.write("data: end\n\n");
+    res.end();
+  } catch (err) {
+    console.error("chat_latest_news_stream_error", err);
+    res.write("event: error\n");
+    res.write(`data: ${JSON.stringify({ message: (err as Error)?.message || "error" })}\n\n`);
+    res.end();
   }
 });
 
