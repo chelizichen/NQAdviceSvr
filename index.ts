@@ -759,8 +759,9 @@ app.get("/chat/:date/news/latest/stream", async (req: Request<{ date: string }>,
 
     // finalize and persist with tag
     const userMsg = { role: "user", content: "最新消息更新（自动）" };
+    const newsMsg = { role: "system", content: latestContent };
     const asstMsg = { role: "assistant", content: reply, tag: "latest_news" } as any;
-    const persisted = [...baseMessages, userMsg, asstMsg];
+    const persisted = [...baseMessages, userMsg, newsMsg, asstMsg];
     chat.messages = persisted;
     chat.updatedAt = new Date().toISOString();
     fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), "utf-8");
