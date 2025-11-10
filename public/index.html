@@ -528,17 +528,20 @@
         const openPrice = (data.dayOpen != null && Number.isFinite(Number(data.dayOpen)))
           ? Number(data.dayOpen)
           : (first ? Number(first[0]) : null);
+        const lastClose = (data.lastClose != null && Number.isFinite(Number(data.lastClose))) ? Number(data.lastClose) : null;
         const latestClose = last ? Number(last[1]) : null;
         const maxHigh = data.values.reduce((m, v) => Math.max(m, Number(v?.[3] ?? m)), Number.MIN_SAFE_INTEGER);
         const minLow = data.values.reduce((m, v) => Math.min(m, Number(v?.[2] ?? m)), Number.MAX_SAFE_INTEGER);
-        const diff = (Number.isFinite(latestClose) && Number.isFinite(openPrice)) ? (latestClose - openPrice) : null;
-        const diffPct = (Number.isFinite(latestClose) && Number.isFinite(openPrice) && openPrice !== 0)
-          ? ((latestClose - openPrice) / openPrice * 100) : null;
+        const baseRef = Number.isFinite(lastClose) ? lastClose : openPrice;
+        const diff = (Number.isFinite(latestClose) && Number.isFinite(baseRef)) ? (latestClose - baseRef) : null;
+        const diffPct = (Number.isFinite(latestClose) && Number.isFinite(baseRef) && baseRef !== 0)
+          ? ((latestClose - baseRef) / baseRef * 100) : null;
         const changeClass = diff == null ? '' : ((diff >= 0) ? 'up' : 'down');
         const infoHtml = `
           <div class="info-row">
             <div class="info-item"><span class="info-label">开盘价：</span><span class="info-val">${openPrice != null ? fmtPrice(openPrice) : '-'}</span></div>
-            <div class="info-item"><span class="info-label">最新价：</span><span class="info-val ${changeClass} pill">${latestClose != null ? (latestClose >= (openPrice ?? latestClose) ? '▲ ' : '▼ ') + fmtPrice(latestClose) : '-'}</span></div>
+            <div class="info-item"><span class="info-label">昨日收盘：</span><span class="info-val">${Number.isFinite(lastClose) ? fmtPrice(lastClose) : '-'}</span></div>
+            <div class="info-item"><span class="info-label">最新价：</span><span class="info-val ${changeClass} pill">${latestClose != null ? (latestClose >= (baseRef ?? latestClose) ? '▲ ' : '▼ ') + fmtPrice(latestClose) : '-'}</span></div>
             <div class="info-item"><span class="info-label">涨跌额：</span><span class="info-val ${changeClass} pill">${diff != null ? (diff >= 0 ? '+' : '') + fmtPrice(diff) : '-'}</span></div>
             <div class="info-item"><span class="info-label">涨跌幅：</span><span class="info-val ${changeClass} pill">${diffPct != null ? (diff >= 0 ? '+' : '') + diffPct.toFixed(2) + '%' : '-'}</span></div>
             <div class="info-item"><span class="info-label">最高价：</span><span class="info-val">${Number.isFinite(maxHigh) ? fmtPrice(maxHigh) : '-'}</span></div>
@@ -574,17 +577,20 @@
           const first2 = data2.values?.[0] ?? null;
           const last2 = data2.values?.[data2.values.length - 1] ?? null;
           const open2 = (data2.dayOpen != null && Number.isFinite(Number(data2.dayOpen))) ? Number(data2.dayOpen) : (first2 ? Number(first2[0]) : null);
+          const lastClose2 = (data2.lastClose != null && Number.isFinite(Number(data2.lastClose))) ? Number(data2.lastClose) : null;
           const close2 = last2 ? Number(last2[1]) : null;
           const maxHigh2 = data2.values.reduce((m, v) => Math.max(m, Number(v?.[3] ?? m)), Number.MIN_SAFE_INTEGER);
           const minLow2 = data2.values.reduce((m, v) => Math.min(m, Number(v?.[2] ?? m)), Number.MAX_SAFE_INTEGER);
-          const diff2 = (Number.isFinite(close2) && Number.isFinite(open2)) ? (close2 - open2) : null;
-          const pct2 = (Number.isFinite(close2) && Number.isFinite(open2) && open2 !== 0) ? ((close2 - open2) / open2 * 100) : null;
+          const baseRef2 = Number.isFinite(lastClose2) ? lastClose2 : open2;
+          const diff2 = (Number.isFinite(close2) && Number.isFinite(baseRef2)) ? (close2 - baseRef2) : null;
+          const pct2 = (Number.isFinite(close2) && Number.isFinite(baseRef2) && baseRef2 !== 0) ? ((close2 - baseRef2) / baseRef2 * 100) : null;
           const changeClass2 = diff2 == null ? '' : ((diff2 >= 0) ? 'up' : 'down');
           const fmt = (v) => Number(v).toFixed(2);
           $('futuresInfo').innerHTML = `
             <div class=\"info-row\">
               <div class=\"info-item\"><span class=\"info-label\">开盘价：</span><span class=\"info-val\">${open2 != null ? fmt(open2) : '-'}</span></div>
-              <div class=\"info-item\"><span class=\"info-label\">最新价：</span><span class=\"info-val ${changeClass2} pill\">${close2 != null ? (close2 >= (open2 ?? close2) ? '▲ ' : '▼ ') + fmt(close2) : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">昨日收盘：</span><span class=\"info-val\">${Number.isFinite(lastClose2) ? fmt(lastClose2) : '-'}</span></div>
+              <div class=\"info-item\"><span class=\"info-label\">最新价：</span><span class=\"info-val ${changeClass2} pill\">${close2 != null ? (close2 >= (baseRef2 ?? close2) ? '▲ ' : '▼ ') + fmt(close2) : '-'}</span></div>
               <div class=\"info-item\"><span class=\"info-label\">涨跌额：</span><span class=\"info-val ${changeClass2} pill\">${diff2 != null ? (diff2 >= 0 ? '+' : '') + fmt(diff2) : '-'}</span></div>
               <div class=\"info-item\"><span class=\"info-label\">涨跌幅：</span><span class=\"info-val ${changeClass2} pill\">${pct2 != null ? (diff2 >= 0 ? '+' : '') + pct2.toFixed(2) + '%' : '-'}</span></div>
               <div class=\"info-item\"><span class=\"info-label\">最高价：</span><span class=\"info-val\">${Number.isFinite(maxHigh2) ? fmt(maxHigh2) : '-'}</span></div>

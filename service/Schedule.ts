@@ -18,8 +18,8 @@ setInterval(()=>{
         const today = anyRes['今日时间'] ?? '';
         const now = anyRes['当前时间'] ?? anyRes.at ?? '';
         const openPrice = anyRes['今日开盘价'] ?? (anyRes.fields?.[6] ?? '');
-
-        const data = `名称:${name}|现价:${nowPrice}|买价:${buyPrice}|卖价:${sellPrice}|最高价:${highPrice}|最低价:${lowPrice}|今日时间:${today}|当前时间:${now}|今日开盘价:${openPrice}\n`;
+        const lastPrice = anyRes['昨日收盘价'] ?? (anyRes.fields?.[7] ?? '');
+        const data = `名称:${name}|现价:${nowPrice}|买价:${buyPrice}|卖价:${sellPrice}|最高价:${highPrice}|最低价:${lowPrice}|今日时间:${today}|当前时间:${now}|今日开盘价:${openPrice}|昨日收盘价:${lastPrice}\n`;  
         console.log('Schedule|写入期货数据:', data);
         const dir = path.join(process.cwd(), 'data', 'futures');
         const file = path.join(dir, `${moment().format('YYYY-MM-DD')}.txt`);

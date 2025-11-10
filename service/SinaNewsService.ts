@@ -34,7 +34,8 @@ const getFutures = async () => {
     highPrice,
     lowPrice,
     now,
-    __,openPrice,____,_____,______,
+    lastPrice
+    ,openPrice,____,_____,______,
     today,
     name
   ] = values[1].split(',')
@@ -57,6 +58,7 @@ const getFutures = async () => {
     '今日时间':today,
     '当前时间':now,
     '今日开盘价':openPrice,
+    '昨日收盘价':lastPrice,
   }
 };
 

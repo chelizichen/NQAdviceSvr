@@ -265,6 +265,7 @@ app.get("/futures/:date", (req: Request<{ date: string }>, res: Response) => {
     const closes: number[] = [];
     let name = "";
     let dayOpen: number | null = null;
+    let lastClose: number | null = null; // 昨日收盘价
     for (const ln of lines) {
       // 解析每个键值对
       const map: Record<string, string> = {};
@@ -288,6 +289,14 @@ app.get("/futures/:date", (req: Request<{ date: string }>, res: Response) => {
           dayOpen = openNum; // 每次遇到有效值都覆盖，最终取最后一条记录
         }
       }
+      // 记录“昨日收盘价”：按最新出现的值覆盖
+      {
+        const lastStr = map["昨日收盘价"] || "";
+        const lastNum = Number(lastStr);
+        if (!Number.isNaN(lastNum) && Number.isFinite(lastNum)) {
+          lastClose = lastNum;
+        }
+      }
       if (!Number.isNaN(close)) {
         times.push(now);
         closes.push(close);
@@ -305,7 +314,7 @@ app.get("/futures/:date", (req: Request<{ date: string }>, res: Response) => {
       const low = Math.min(open, close);
       values.push([open, close, low, high]);
     }
-    res.json({ name, times, values, dayOpen });
+    res.json({ name, times, values, dayOpen, lastClose });
   } catch (err) {
     res.status(500).json({ error: "invalid_futures_format" });
   }
