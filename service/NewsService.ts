@@ -1,6 +1,5 @@
 import axios  from "axios";
 import moment from "moment";
-import { randomBytes } from "node:crypto";
 import { NewsServiceError } from "./errors";
 
 // const req = 1761969988123
@@ -14,9 +13,7 @@ const http = axios.create({
 const HTTP_CALLBACK_MAP:Map<string,string> = new Map()
 
 http.interceptors.request.use(req=>{
-    const buf = randomBytes(8)
-    const rand64 = BigInt('0x' + buf.toString('hex'))
-    const randomPart = (rand64 % 10000000000000000n).toString()
+    const randomPart = Math.floor(Math.random() * 1e16).toString()
     req.params.callback = `jQuery${randomPart}_${moment().valueOf()}`
     HTTP_CALLBACK_MAP.set(req.url as string,req.params.callback)
     return req

@@ -117,11 +117,9 @@
       <main class="content">
         <div class="controls">
           <button id="refreshBtn" style="display: none;">刷新日期</button>
-          <button id="generateBtn" style="display: none;">生成今日建议</button>
-          <button id="showAdviceBtn" style="display: none;">显示建议</button>
           <button id="showChatBtn">显示聊天</button>
           <button id="startChatBtn">开始对话</button>
-          <button id="showNewsBtn" style="display: none;">显示新闻</button>
+          <button id="syncPrevBtn" style="display:none;">同步上一天</button>
           <button id="showFuturesBtn">显示当前期货走势</button>
           <button id="showWeeklyBtn">显示周线走势</button>
 
@@ -162,8 +160,8 @@
       const $ = (id) => document.getElementById(id);
       const todayStr = new Date().toISOString().slice(0,10);
       let selectedDate = todayStr;
-      let adviceBuffer = '';
-      let newsBuffer = '';
+      
+      
       let viewMode = 'chat'; // 默认聊天视图
       let futuresChartInstance = null;
       let futuresTimer = null;
@@ -188,35 +186,30 @@
       function setActiveView(view) {
         const map = {
           advice: 'showAdviceBtn',
-          news: 'showNewsBtn',
           futures: 'showFuturesBtn',
           weekly: 'showWeeklyBtn',
           chat: 'showChatBtn',
         };
-        ['showAdviceBtn', 'showNewsBtn', 'showFuturesBtn', 'showWeeklyBtn', 'showChatBtn'].forEach(id => {
+        ['showAdviceBtn', 'showFuturesBtn', 'showWeeklyBtn', 'showChatBtn'].forEach(id => {
           const el = $(id);
           if (!el) return;
           el.classList.toggle('active', id === map[view]);
         });
       }
 
-      async function listAdvices() {
-        try { const res = await fetch('/advices'); const data = await res.json(); return data.dates || []; }
-        catch (e) { return []; }
-      }
+      
       async function listChats() {
         try { const res = await fetch('/chats'); const data = await res.json(); return data.dates || []; }
         catch (e) { return []; }
       }
 
-      function renderSidebar(adviceDates, chatDates) {
+      function renderSidebar(chatDates) {
         const wrap = $('sidebar');
         wrap.innerHTML = '';
         // 倒序（今日在上、历史在下）
         for (let i = 0; i <= 27; i++) {
           const d = new Date(); d.setDate(d.getDate() - i);
           const ds = d.toISOString().slice(0,10);
-          const hasAdvice = adviceDates.includes(ds);
           const hasChat = chatDates.includes(ds);
           const item = document.createElement('div');
           item.className = 'date-item' + (selectedDate === ds ? ' selected' : '');
@@ -224,20 +217,15 @@
             <div class="badges">
               <span class="badge ${hasChat?'ok':''}">对话${hasChat?'✓':''}</span>
             </div>`;
-          item.addEventListener('click', () => { selectedDate = ds; $('dateInput').value = ds; loadAllForDate(ds); renderSidebar(adviceDates, chatDates); });
+          item.addEventListener('click', () => { selectedDate = ds; $('dateInput').value = ds; loadAllForDate(ds); renderSidebar(chatDates); });
           wrap.appendChild(item);
         }
       }
 
-      async function fetchAdvice(date) {
-        const res = await fetch(`/advices/${date}`);
-        if (res.status === 404) return null;
-        const text = await res.text();
-        return text;
-      }
+      
 
       async function fetchPositions(date) {
-        // Prefer global assets.json (single source of truth), fallback to dated positions
+        // 仅使用全局 assets.json（单一事实来源）
         try {
           const resA = await fetch(`/assets`);
           if (resA.ok) {
@@ -245,18 +233,10 @@
             return { entries: (Array.isArray(data?.entries) ? data.entries : []), totalAssets: Number(data?.totalAssets || 0) };
           }
         } catch (e) {}
-        const res = await fetch(`/positions/${date}`);
-        if (!res.ok) return { entries: [], totalAssets: 0 };
-        const data = await res.json();
-        return { entries: (Array.isArray(data?.entries) ? data.entries : []), totalAssets: Number(data?.totalAssets || 0) };
+        return { entries: [], totalAssets: 0 };
       }
 
-      async function fetchNews(date) {
-        const res = await fetch(`/news/${date}`);
-        if (res.status === 404) return '';
-        const data = await res.json();
-        return data?.content || '';
-      }
+      
 
       function sanitizeHref(href) {
         try {
@@ -428,34 +408,11 @@
 
       function renderAdvice(html) { $('advice').innerHTML = html; }
       function updateStatus(message) {
-        const viewLabel = viewMode === 'chat' ? '聊天' : (viewMode === 'news' ? '新闻' : (viewMode === 'futures' ? '期货' : (viewMode === 'weekly' ? '周线' : '文本')));
+        const viewLabel = viewMode === 'chat' ? '聊天' : (viewMode === 'futures' ? '期货' : (viewMode === 'weekly' ? '周线' : '文本'));
         $('status').textContent = `状态：${message}（视图：${viewLabel}）`;
       }
 
-      function streamSelected() {
-        const es = new EventSource(`/stream/${selectedDate}`);
-        updateStatus('流式生成中...');
-        let oldBuffer = adviceBuffer
-        adviceBuffer = '';
-        renderAdvice('');
-        es.onmessage = (ev) => {
-          adviceBuffer += ev.data;
-          renderAdvice(mdToHtml(adviceBuffer));
-        };
-        es.addEventListener('done', () => {
-          updateStatus('生成完成');
-          es.close();
-          refreshSidebar();
-        });
-        es.addEventListener('error', (err) => {
-          console.log('err',err);
-          
-          adviceBuffer = oldBuffer;
-          renderAdvice(mdToHtml(adviceBuffer));
-          updateStatus('生成出错');
-          es.close();
-        });
-      }
+      
 
       async function loadAllForDate(date) {
         updateStatus('读取中...');
@@ -482,43 +439,13 @@
       }
 
       async function refreshSidebar() {
-        const [adv, chats] = await Promise.all([listAdvices(), listChats()]);
-        renderSidebar(adv, chats);
+        const chats = await listChats();
+        renderSidebar(chats);
       }
 
       $('refreshBtn').addEventListener('click', refreshSidebar);
-      $('generateBtn').addEventListener('click', () => {
-        if (selectedDate !== todayStr) { $('status').textContent = '状态：仅支持今日生成'; return; }
-        streamSelected();
-      });
-      $('showAdviceBtn').addEventListener('click', () => {
-        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
-        // 切换到文本视图时，确保隐藏期货图并显示内容区
-        showChart(false);
-        viewMode = 'advice';
-        setActiveView('advice');
-        if (adviceBuffer) {
-          renderAdvice(mdToHtml(adviceBuffer));
-          updateStatus('建议读取完成');
-        } else {
-          renderAdvice('');
-          updateStatus(selectedDate === todayStr ? '无建议，准备生成' : '该日无建议');
-        }
-      });
-      $('showNewsBtn').addEventListener('click', () => {
-        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
-        // 切换到新闻视图时，确保隐藏期货图并显示内容区
-        showChart(false);
-        viewMode = 'news';
-        setActiveView('news');
-        if (newsBuffer) {
-          renderAdvice(mdToHtml(newsBuffer));
-          updateStatus('新闻读取完成');
-        } else {
-          renderAdvice('');
-          updateStatus('该日无新闻');
-        }
-      });
+      
+      
       async function fetchFutures(date) {
         const res = await fetch(`/futures/${date}`);
         if (res.status === 404) return null;
@@ -729,11 +656,14 @@
       async function updateChatControls(date) {
         const startBtn = $('startChatBtn');
         const showBtn = $('showChatBtn');
+        const syncBtn = $('syncPrevBtn');
         if (!startBtn || !showBtn) return;
         const chat = await fetchChat(date);
         const isToday = date === todayStr;
         // 仅今日允许“开始对话”显示
         startBtn.style.display = (isToday && !chat) ? 'inline-block' : 'none';
+        // 今日无聊天时显示“同步上一天”按钮
+        if (syncBtn) { syncBtn.style.display = (isToday && !chat) ? 'inline-block' : 'none'; }
         // 动态高亮：若今日且无聊天，高亮开始对话；否则若存在聊天，高亮显示聊天
         startBtn.classList.toggle('btn-cta', Boolean(isToday && !chat));
         showBtn.classList.toggle('btn-cta', Boolean(chat));
@@ -796,6 +726,35 @@
         renderChat(chat);
         updateStatus('对话初始化完成');
         await updateChatControls(selectedDate);
+      });
+      $('syncPrevBtn').addEventListener('click', async () => {
+        viewMode = 'chat';
+        setActiveView('chat');
+        if (futuresTimer) { clearInterval(futuresTimer); futuresTimer = null; }
+        updateStatus('同步上一天对话中...');
+        const btn = $('syncPrevBtn');
+        btn.disabled = true;
+        btn.classList.add('active');
+        try {
+          const res = await fetch(`/chat/${selectedDate}/sync-previous`, { method: 'POST' });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            renderAdvice('同步上一天失败');
+            updateStatus(err?.message ? `同步失败：${err.message}` : '同步失败');
+          } else {
+            const chat = await res.json();
+            renderChat(chat);
+            updateStatus('已同步上一天对话');
+          }
+        } catch (e) {
+          renderAdvice('同步上一天失败');
+          updateStatus('同步失败');
+        } finally {
+          btn.disabled = false;
+          btn.classList.remove('active');
+          await updateChatControls(selectedDate);
+          await refreshSidebar();
+        }
       });
       $('fetchLatestBtn').addEventListener('click', async () => {
         viewMode = 'chat';
