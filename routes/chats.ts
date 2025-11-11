@@ -86,7 +86,7 @@ function nowLocal(): string {
 
 function buildTimeContext(date: string): { role: "system"; content: string } {
   const nowStr = nowLocal();
-  const content = `当前日期：${date}\n当前时间：${nowStr}\n请注意这是新的一天。请结合历史聊天记录与最新消息/行情进行判断，并在建议中注明时间。`;
+  const content = `当前日期：${date}\n当前时间：${nowStr}\n`;
   return { role: "system", content };
 }
 
