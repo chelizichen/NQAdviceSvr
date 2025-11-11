@@ -331,12 +331,24 @@
           const pct = (Number.isFinite(computedTotal) && computedTotal > 0 && Number.isFinite(amount) && amount >= 0)
             ? ((amount / computedTotal) * 100).toFixed(2) + '%'
             : '-';
+          const profit = Number(e.profit ?? 0);
+          const shares = Number(e.shares ?? e.qty ?? e.volume ?? 0);
+          const cost = Number(e.cost ?? e.price ?? 0);
+          const principal = (Number.isFinite(shares) && shares > 0 && Number.isFinite(cost) && cost > 0)
+            ? shares * cost
+            : (Number.isFinite(amount) && amount > 0 ? amount : 0);
+          const yieldPct = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+            ? ((profit / principal) * 100).toFixed(2) + '%'
+            : '-';
           return `<tr>
             <td style="padding:4px;border-bottom:1px solid var(--border);word-break:break-word;font-size:12px;">${name}</td>
             <td style="padding:4px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;">${Number.isFinite(amount) ? amount.toFixed(2) : '-'}</td>
             <td style="padding:4px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;">${pct}</td>
+            <td style="padding:4px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;">${Number.isFinite(profit) ? profit.toFixed(2) : '-'}</td>
+            <td style="padding:4px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;">${yieldPct}</td>
             <td style="padding:4px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;">
               <button class="pos-edit" data-idx="${idx}" style="padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);">更改金额</button>
+              <button class="pos-profit-edit" data-idx="${idx}" style="margin-left:8px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);">更改收益</button>
               <button class="pos-delete" data-idx="${idx}" style="margin-left:8px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:#2b2b2b;color:#f66;">删除</button>
             </td>
           </tr>`;
@@ -347,10 +359,12 @@
           <table style="width:100%;border-collapse:collapse;">
             <thead>
               <tr>
-                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border);">资产</th>
-                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);">金额</th>
-                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);">占比</th>
-                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);">操作</th>
+                <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">资产</th>
+                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">金额</th>
+                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">占比</th>
+                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">累计收益</th>
+                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">收益率</th>
+                <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">操作</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -381,6 +395,19 @@
           if (!Number.isFinite(val) || val < 0) { $('status').textContent = '状态：金额必须为非负数'; return; }
           const next = currentPositions.slice();
           next[idx] = { ...next[idx], amount: val };
+          currentPositions = next;
+          await savePositions(currentPositions);
+          renderPositions();
+        }
+        if (t.classList.contains('pos-profit-edit')) {
+          if (!Number.isFinite(idx)) return;
+          const oldP = Number(currentPositions[idx]?.profit ?? 0);
+          const inputP = prompt('请输入该行的累计收益（元）', String(oldP));
+          if (inputP == null) return; // cancelled
+          const valP = Number(String(inputP).trim());
+          if (!Number.isFinite(valP)) { $('status').textContent = '状态：收益必须是数值'; return; }
+          const next = currentPositions.slice();
+          next[idx] = { ...next[idx], profit: valP };
           currentPositions = next;
           await savePositions(currentPositions);
           renderPositions();

@@ -619,7 +619,17 @@ app.post("/chat/:date/message", async (req: Request<{ date: string }>, res: Resp
             if (e.assetName && Number.isFinite(Number(e.amount))) {
               const amount = Number(e.amount);
               const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
-              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+              const profit = Number(e.profit ?? 0);
+              const shares = Number(e.shares ?? e.qty ?? e.volume ?? 0);
+              const cost = Number(e.cost ?? e.price ?? 0);
+              const principal = (Number.isFinite(shares) && shares > 0 && Number.isFinite(cost) && cost > 0)
+                ? shares * cost
+                : (Number.isFinite(amount) && amount > 0 ? amount : 0);
+              const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+                ? ((profit / principal) * 100).toFixed(2) + '%'
+                : '-';
+              const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}${profitStr}`;
             }
             if (e.fundCode || e.fundName) {
               const name = e.fundName || "";
@@ -627,13 +637,29 @@ app.post("/chat/:date/message", async (req: Request<{ date: string }>, res: Resp
               const shares = e.shares ?? e.qty ?? e.volume ?? 0;
               const cost = e.cost ?? e.price ?? "-";
               const platform = e.platform || "";
-              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+              const profit = Number(e.profit ?? 0);
+              const principal = (Number.isFinite(Number(shares)) && Number(shares) > 0 && Number.isFinite(Number(cost)) && Number(cost) > 0)
+                ? Number(shares) * Number(cost)
+                : (Number.isFinite(Number(e.amount)) && Number(e.amount) > 0 ? Number(e.amount) : 0);
+              const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+                ? ((profit / principal) * 100).toFixed(2) + '%'
+                : '-';
+              const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}${profitStr}`;
             }
             const sym = e.symbol || e.code || "合约";
             const side = e.side || "方向";
             const qty = e.qty || e.volume || 0;
             const price = e.price ?? "-";
-            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+            const profit = Number(e.profit ?? 0);
+            const principal = (Number.isFinite(Number(qty)) && Number(qty) > 0 && Number.isFinite(Number(price)) && Number(price) > 0)
+              ? Number(qty) * Number(price)
+              : 0;
+            const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+              ? ((profit / principal) * 100).toFixed(2) + '%'
+              : '-';
+            const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}${profitStr}`;
           });
           positionsMessage = { role: "system", content: `仓位快照：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}` };
         }
@@ -711,7 +737,17 @@ app.get("/chat/:date/news/latest/stream", async (req: Request<{ date: string }>,
             if (e.assetName && Number.isFinite(Number(e.amount))) {
               const amount = Number(e.amount);
               const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
-              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+              const profit = Number(e.profit ?? 0);
+              const shares = Number(e.shares ?? e.qty ?? e.volume ?? 0);
+              const cost = Number(e.cost ?? e.price ?? 0);
+              const principal = (Number.isFinite(shares) && shares > 0 && Number.isFinite(cost) && cost > 0)
+                ? shares * cost
+                : (Number.isFinite(amount) && amount > 0 ? amount : 0);
+              const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+                ? ((profit / principal) * 100).toFixed(2) + '%'
+                : '-';
+              const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}${profitStr}`;
             }
             if (e.fundCode || e.fundName) {
               const name = e.fundName || "";
@@ -719,13 +755,29 @@ app.get("/chat/:date/news/latest/stream", async (req: Request<{ date: string }>,
               const shares = e.shares ?? e.qty ?? e.volume ?? 0;
               const cost = e.cost ?? e.price ?? "-";
               const platform = e.platform || "";
-              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+              const profit = Number(e.profit ?? 0);
+              const principal = (Number.isFinite(Number(shares)) && Number(shares) > 0 && Number.isFinite(Number(cost)) && Number(cost) > 0)
+                ? Number(shares) * Number(cost)
+                : (Number.isFinite(Number(e.amount)) && Number(e.amount) > 0 ? Number(e.amount) : 0);
+              const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+                ? ((profit / principal) * 100).toFixed(2) + '%'
+                : '-';
+              const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}${profitStr}`;
             }
             const sym = e.symbol || e.code || "合约";
             const side = e.side || "方向";
             const qty = e.qty || e.volume || 0;
             const price = e.price ?? "-";
-            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+            const profit = Number(e.profit ?? 0);
+            const principal = (Number.isFinite(Number(qty)) && Number(qty) > 0 && Number.isFinite(Number(price)) && Number(price) > 0)
+              ? Number(qty) * Number(price)
+              : 0;
+            const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+              ? ((profit / principal) * 100).toFixed(2) + '%'
+              : '-';
+            const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}${profitStr}`;
           });
           positionsMessage = { role: "system", content: `仓位快照：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}` };
         }
@@ -821,7 +873,17 @@ app.get("/chat/:date/message/stream", async (req: Request<{ date: string }>, res
             if (e.assetName && Number.isFinite(Number(e.amount))) {
               const amount = Number(e.amount);
               const pct = (totalAssets > 0 && amount >= 0) ? ((amount / totalAssets) * 100).toFixed(2) + '%' : '-';
-              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}`;
+              const profit = Number(e.profit ?? 0);
+              const shares = Number(e.shares ?? e.qty ?? e.volume ?? 0);
+              const cost = Number(e.cost ?? e.price ?? 0);
+              const principal = (Number.isFinite(shares) && shares > 0 && Number.isFinite(cost) && cost > 0)
+                ? shares * cost
+                : (Number.isFinite(amount) && amount > 0 ? amount : 0);
+              const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+                ? ((profit / principal) * 100).toFixed(2) + '%'
+                : '-';
+              const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+              return `${t} 资产 ${e.assetName} 金额 ${amount}${pct !== '-' ? `，占比 ${pct}` : ''}${profitStr}`;
             }
             if (e.fundCode || e.fundName) {
               const name = e.fundName || "";
@@ -829,13 +891,29 @@ app.get("/chat/:date/message/stream", async (req: Request<{ date: string }>, res
               const shares = e.shares ?? e.qty ?? e.volume ?? 0;
               const cost = e.cost ?? e.price ?? "-";
               const platform = e.platform || "";
-              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}`;
+              const profit = Number(e.profit ?? 0);
+              const principal = (Number.isFinite(Number(shares)) && Number(shares) > 0 && Number.isFinite(Number(cost)) && Number(cost) > 0)
+                ? Number(shares) * Number(cost)
+                : (Number.isFinite(Number(e.amount)) && Number(e.amount) > 0 ? Number(e.amount) : 0);
+              const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+                ? ((profit / principal) * 100).toFixed(2) + '%'
+                : '-';
+              const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+              return `${t} 基金 ${name || code} 持有 ${shares} 份，成本净值 ${cost}${platform ? `（平台：${platform}）` : ""}${profitStr}`;
             }
             const sym = e.symbol || e.code || "合约";
             const side = e.side || "方向";
             const qty = e.qty || e.volume || 0;
             const price = e.price ?? "-";
-            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}`;
+            const profit = Number(e.profit ?? 0);
+            const principal = (Number.isFinite(Number(qty)) && Number(qty) > 0 && Number.isFinite(Number(price)) && Number(price) > 0)
+              ? Number(qty) * Number(price)
+              : 0;
+            const y = (Number.isFinite(principal) && principal > 0 && Number.isFinite(profit) && profit !== 0)
+              ? ((profit / principal) * 100).toFixed(2) + '%'
+              : '-';
+            const profitStr = Number.isFinite(profit) && profit !== 0 ? `，收益 ${profit}${y !== '-' ? `（收益率：${y}）` : ''}` : '';
+            return `${t} ${sym} ${side} ${qty} 手，均价 ${price}${profitStr}`;
           });
           positionsMessage = { role: "system", content: `仓位快照：\n${totalAssets > 0 ? `总资产：${totalAssets} 元\n` : ''}${lines.join("\n")}` };
         }
