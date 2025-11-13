@@ -10,6 +10,7 @@ import futuresRouter from "./routes/futures";
 import stockHqRouter from "./routes/stockHq";
 import assetsRouter from "./routes/assets";
 import chatsRouter from "./routes/chats";
+import newsRouter from "./routes/news";
 
 const envPath = require("node:path").resolve(process.cwd(), "config.env");
 dotenv.config({ path: envPath });
@@ -32,6 +33,7 @@ app.use(futuresRouter);
 app.use(stockHqRouter);
 app.use(assetsRouter);
 app.use(chatsRouter);
+app.use(newsRouter);
 
 const port = process.env.SGRID_TARGET_PORT ? Number(process.env.SGRID_TARGET_PORT) : 3000;
 app.listen(port, () => {

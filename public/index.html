@@ -107,6 +107,22 @@
       .chg-up { color: #e74c3c; font-weight: 700; }
       .chg-down { color: #2ecc71; font-weight: 700; }
       .hq-table tr:hover { background: rgba(0,0,0,0.03); }
+      /* News paragraph bubble style inside news panel */
+      #newsPanel p {
+        display: inline-block;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px; /* pill-like rounded bubble */
+        background: var(--card);
+        color: var(--text);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        margin: 6px 0;
+      }
+      #newsPanel{
+        border: none;
+        background:none;
+        overflow: scroll;
+      }
     </style>
   </head>
   <body>
@@ -173,7 +189,11 @@
         </div>
       </main>
       <section class="positions">
-        <div class="controls" style="flex-wrap:wrap; gap:8px 10px; align-items:center;">
+        <div class="controls" id="positionsTabs" style="margin-bottom:8px;">
+          <button id="tabPositions" class="active">仓位</button>
+          <button id="tabNews">最新新闻</button>
+        </div>
+        <div class="controls" id="positionsControls" style="flex-wrap:wrap; gap:8px 10px; align-items:center;">
           <span style="font-size:12px;color:var(--muted);">添加资产项：</span>
           <select id="assetCategory" style="width:120px;border:1px solid var(--border);border-radius:12px;padding:8px;background: var(--card);color: var(--text);">
             <option value="fund">基金</option>
@@ -186,7 +206,8 @@
           <input id="posNote" placeholder="备注（可选）" style="flex:1;min-width:160px;border:1px solid var(--border);border-radius:12px;padding:8px;background: var(--card);color: var(--text);" />
           <button id="addPosBtn">添加资产</button>
         </div>
-        <div id="positionsList" class="markdown" style="min-height: 70vh;"></div>
+        <div id="positionsList" class="markdown" style="height: 80vh;"></div>
+        <div id="newsPanel" class="markdown" style="height: 80vh; display:none;font-size: 14px;"></div>
       </section>
     </div>
 
@@ -200,6 +221,8 @@
       let viewMode = 'chat'; // 默认聊天视图
       let futuresChartInstance = null;
       let futuresTimer = null;
+      let panelTab = 'positions';
+      let newsTimer = null;
       $('dateInput').value = todayStr;
       // 初始激活默认视图按钮
       setActiveView(viewMode);
@@ -217,6 +240,43 @@
         const cur = document.documentElement.getAttribute('data-theme') || 'light';
         applyTheme(cur === 'dark' ? 'light' : 'dark');
       });
+
+      // Positions/News Tab management
+      function setPanelTab(tab) {
+        panelTab = tab;
+        const posBtn = $('tabPositions');
+        const newsBtn = $('tabNews');
+        posBtn && posBtn.classList.toggle('active', tab === 'positions');
+        newsBtn && newsBtn.classList.toggle('active', tab === 'news');
+        const posCtrl = $('positionsControls');
+        const posList = $('positionsList');
+        const newsPanel = $('newsPanel');
+        if (posCtrl) posCtrl.style.display = tab === 'positions' ? '' : 'none';
+        if (posList) posList.style.display = tab === 'positions' ? '' : 'none';
+        if (newsPanel) newsPanel.style.display = tab === 'news' ? '' : 'none';
+        if (tab === 'news') {
+          refreshNews();
+          if (newsTimer) clearInterval(newsTimer);
+          newsTimer = setInterval(refreshNews, 60000);
+        } else {
+          if (newsTimer) { clearInterval(newsTimer); newsTimer = null; }
+        }
+      }
+
+      async function refreshNews() {
+        try {
+          const res = await fetch('/news/latest');
+          if (!res.ok) return;
+          const data = await res.json();
+          const html = mdToHtml(String(data?.content || ''));
+          const newsPanel = $('newsPanel');
+          if (newsPanel) newsPanel.innerHTML = html;
+        } catch (e) {}
+      }
+
+      $('tabPositions')?.addEventListener('click', () => setPanelTab('positions'));
+      $('tabNews')?.addEventListener('click', () => setPanelTab('news'));
+      setPanelTab(panelTab);
 
       function setActiveView(view) {
         const map = {
