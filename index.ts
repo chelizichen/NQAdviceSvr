@@ -7,6 +7,7 @@ import { authGate } from "./lib/auth";
 
 import authRouter from "./routes/auth";
 import futuresRouter from "./routes/futures";
+import stockHqRouter from "./routes/stockHq";
 import assetsRouter from "./routes/assets";
 import chatsRouter from "./routes/chats";
 
@@ -28,6 +29,7 @@ app.use(express.static(PUB_DIR));
 
 // 业务路由模块
 app.use(futuresRouter);
+app.use(stockHqRouter);
 app.use(assetsRouter);
 app.use(chatsRouter);
 

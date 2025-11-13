@@ -96,6 +96,17 @@
       .chat-bubble.assistant { background: var(--bubble-assistant-bg); border-color: var(--bubble-assistant-border); }
       .chat-name { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
       .chat-content { color: var(--text); }
+
+      /* Stock HQ table (small font, highlight changes) */
+      .hq-wrap { margin-top: 12px; border:1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 2px 6px rgba(0,0,0,0.06); overflow: hidden; }
+      .hq-header { padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+      .hq-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .hq-table th, .hq-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+      .hq-table th { text-align: right; color: var(--muted); font-weight: 600; }
+      .hq-table td.name, .hq-table th.name { text-align: left; }
+      .chg-up { color: #e74c3c; font-weight: 700; }
+      .chg-down { color: #2ecc71; font-weight: 700; }
+      .hq-table tr:hover { background: rgba(0,0,0,0.03); }
     </style>
   </head>
   <body>
@@ -127,6 +138,30 @@
         <div id="advice" class="markdown">选择左侧日期以查看内容...</div>
         <div id="futuresInfo" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background: var(--card);color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.05);"></div>
         <div id="futuresChart" style="width:100%;height:360px;display:none;border:1px solid var(--border);border-radius:16px;background: var(--card);box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-top:12px;"></div>
+        <div id="stockHq" class="hq-wrap" style="display:none;">
+          <div class="hq-header">
+            <span>纳斯达克实时行情（Top 20）</span>
+          </div>
+          <div style="overflow:auto;">
+            <table class="hq-table" id="stockHqTable">
+              <thead>
+                <tr>
+                  <th class="name">名称</th>
+                  <th>代码</th>
+                  <th>最新价</th>
+                  <th>涨跌额</th>
+                  <th>涨跌幅</th>
+                  <th>昨收</th>
+                  <th>今开</th>
+                  <th>最高</th>
+                  <th>最低</th>
+                  <th>市值</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
         <div id="chatPanel" style="display:none;margin-top:12px;border:1px solid var(--border);border-radius:16px;background: var(--card);box-shadow: 0 2px 6px rgba(0,0,0,0.06);">
           <div id="chatMeta" style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;color: var(--muted);"></div>
           <div id="chatMessages" style="max-height:70vh;overflow:auto;padding:12px;"></div>
@@ -454,6 +489,7 @@
       function showChart(show) {
         $('futuresChart').style.display = show ? 'block' : 'none';
         $('futuresInfo').style.display = show ? 'block' : 'none';
+        $('stockHq').style.display = show ? 'block' : 'none';
         $('advice').style.display = show ? 'none' : 'block';
         $('chatPanel').style.display = show ? 'none' : (viewMode === 'chat' ? 'block' : 'none');
       }
@@ -523,6 +559,8 @@
         };
         chart.setOption(option);
         updateStatus('期货走势展示完成');
+        // 首次渲染股票行情表
+        await renderStockHq();
         // 重启每分钟自动刷新（针对传入的日期）
         futuresTimer = setInterval(async () => {
           if (viewMode !== 'futures') return;
@@ -553,6 +591,8 @@
           if (futuresChartInstance) {
             futuresChartInstance.setOption({ xAxis: { data: data2.times }, series: [{ type: 'candlestick', data: data2.values }] });
           }
+          // 刷新股票行情表
+          await renderStockHq();
         }, 60 * 1000);
       }
       $('showFuturesBtn').addEventListener('click', async () => {
@@ -641,6 +681,7 @@
         $('advice').style.display = show ? 'none' : 'block';
         $('futuresChart').style.display = 'none';
         $('futuresInfo').style.display = 'none';
+        $('stockHq').style.display = 'none';
       }
       async function fetchChat(date) {
         try {
@@ -727,6 +768,60 @@
         updateStatus('对话初始化完成');
         await updateChatControls(selectedDate);
       });
+
+      // ===== Stock HQ rendering =====
+      async function fetchStockHq() {
+        try {
+          const res = await fetch('/stockhq?page=1&num=20&market=O&asc=0&sort=');
+          if (!res.ok) return [];
+          const json = await res.json();
+          return Array.isArray(json?.data) ? json.data : [];
+        } catch (e) {
+          return [];
+        }
+      }
+      function fmtNum(n) { const v = Number(n); return Number.isFinite(v) ? v : null; }
+      function renderStockRows(list) {
+        const tbody = document.querySelector('#stockHqTable tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        for (const it of list) {
+          const name = it?.cname || it?.name || '';
+          const symbol = it?.symbol || '';
+          const price = fmtNum(it?.price);
+          const preclose = fmtNum(it?.preclose);
+          const open = fmtNum(it?.open);
+          const high = fmtNum(it?.high);
+          const low = fmtNum(it?.low);
+          const diff = fmtNum(it?.diff);
+          const chg = fmtNum(it?.chg);
+          const mktcap = it?.mktcap != null ? Number(it.mktcap) : null;
+          const mktcapDisplay = typeof it?.mktcap_display === 'string'
+            ? it.mktcap_display
+            : (it?.mktcap_billion != null
+              ? `${Number(it.mktcap_billion).toFixed(2)} 亿`
+              : (mktcap != null ? ((mktcap / 1e8).toFixed(2) + ' 亿') : '-'));
+          const isUp = (diff ?? 0) >= 0;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="name">${name}</td>
+            <td>${symbol}</td>
+            <td class="${isUp ? 'chg-up' : 'chg-down'}">${price != null ? price.toFixed(2) : '-'}</td>
+            <td class="${isUp ? 'chg-up' : 'chg-down'}">${diff != null ? (isUp ? '+' : '') + diff.toFixed(2) : '-'}</td>
+            <td class="${isUp ? 'chg-up' : 'chg-down'}">${chg != null ? (isUp ? '+' : '') + chg.toFixed(2) + '%' : '-'}</td>
+            <td>${preclose != null ? preclose.toFixed(2) : '-'}</td>
+            <td>${open != null ? open.toFixed(2) : '-'}</td>
+            <td>${high != null ? high.toFixed(2) : '-'}</td>
+            <td>${low != null ? low.toFixed(2) : '-'}</td>
+            <td>${mktcapDisplay}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+      async function renderStockHq() {
+        const list = await fetchStockHq();
+        renderStockRows(list);
+      }
       $('syncPrevBtn').addEventListener('click', async () => {
         viewMode = 'chat';
         setActiveView('chat');
