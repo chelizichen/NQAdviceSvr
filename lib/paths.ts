@@ -5,12 +5,12 @@ import fs from "node:fs";
 export const POSITIONS_DIR = path.join(process.cwd(), "data", "positions");
 export const FUTURES_DIR = path.join(process.cwd(), "data", "futures");
 export const CHATS_DIR = path.join(process.cwd(), "data", "chats");
+export const NEWS_SORT_DIR = path.join(process.cwd(), "data", "newssort")
 export const PUBLIC_DIR = path.join(process.cwd(), "public");
-
 // Ensure required directories exist
 export function ensureDirs() {
   // 保留 futures / chats / positions(用于 assets.json)
-  const dirs = [POSITIONS_DIR, FUTURES_DIR, CHATS_DIR];
+  const dirs = [POSITIONS_DIR, FUTURES_DIR, CHATS_DIR,NEWS_SORT_DIR];
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -36,4 +36,9 @@ export function futuresPathForDate(dateStr: string) {
 export function chatPathForDate(dateStr: string) {
   const safe = dateStr.replace(/[^0-9\-]/g, "");
   return path.join(CHATS_DIR, `${safe}.json`);
+}
+
+export function newsSortPathForDate(dateStr: string) {
+  const safe = dateStr.replace(/[^0-9\-]/g, "");
+  return path.join(NEWS_SORT_DIR, `${safe}.txt`);
 }

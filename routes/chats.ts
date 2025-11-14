@@ -118,13 +118,26 @@ router.get("/chats", (req: Request, res: Response) => {
 });
 
 function prevDateStr(date: string): string {
+  // Compute previous day in LOCAL time and format as YYYY-MM-DD
+  // Using toISOString() would convert to UTC and can shift the date
+  // backward for UTC+ offsets (e.g., resulting in 2025-11-12 instead of 2025-11-13).
+  const formatLocal = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
   try {
-    const d = new Date(`${date}T00:00:00`);
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0,10);
+    const [yStr, mStr, dStr] = date.split("-");
+    const y = Number(yStr), m = Number(mStr), day = Number(dStr);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(day)) throw new Error("bad date");
+    const dt = new Date(y, m - 1, day);
+    dt.setDate(dt.getDate() - 1);
+    return formatLocal(dt);
   } catch {
-    const d = new Date(); d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0,10);
+    const dt = new Date();
+    dt.setDate(dt.getDate() - 1);
+    return formatLocal(dt);
   }
 }
 
