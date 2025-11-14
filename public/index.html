@@ -165,7 +165,7 @@
                   <th class="name">名称</th>
                   <th>代码</th>
                   <th>最新价</th>
-                  <th>涨跌额</th>
+                  <th>市盈率</th>
                   <th>涨跌幅</th>
                   <th>昨收</th>
                   <th>今开</th>
@@ -867,7 +867,7 @@
             <td class="name">${name}</td>
             <td>${symbol}</td>
             <td class="${isUp ? 'chg-up' : 'chg-down'}">${price != null ? price.toFixed(2) : '-'}</td>
-            <td class="${isUp ? 'chg-up' : 'chg-down'}">${diff != null ? (isUp ? '+' : '') + diff.toFixed(2) : '-'}</td>
+            <td>${Number(it.pe).toFixed(2)}</td>
             <td class="${isUp ? 'chg-up' : 'chg-down'}">${chg != null ? (isUp ? '+' : '') + chg.toFixed(2) + '%' : '-'}</td>
             <td>${preclose != null ? preclose.toFixed(2) : '-'}</td>
             <td>${open != null ? open.toFixed(2) : '-'}</td>
